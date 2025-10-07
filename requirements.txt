@@ -1,8 +1,10 @@
-Flask
-Flask-SQLAlchemy
-Flask-Login
-Werkzeug
-python-dotenv
-psycopg2-binary
-pytz
-SQLAlchemy
+# requirements.txt (CÓDIGO COMPLETO Y NUEVO)
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+pytz==2023.3.post1
+bcrypt==4.1.2
+SQLAlchemy==2.0.23
+Werkzeug==3.0.1

@@ -1,51 +1,64 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block title %}Gestión de Órdenes{% endblock %}
 
 {% block content %}
-<h2>Gestión de Órdenes de Préstamo</h2>
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Panel de Órdenes</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('crear_orden') }}" class="btn btn-sm btn-outline-primary">
+            <i class="bi bi-plus-circle"></i> Nueva Orden
+        </a>
+    </div>
+</div>
 
-<div class="card">
-    <h4>Órdenes Activas</h4>
-    <table>
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Solicitante</th>
-                <th>Fecha Solicitud</th>
+                <th># Orden</th>
+                <th>Solicitado Por</th>
+                <th>Fecha de Solicitud</th>
                 <th>Productos</th>
                 <th>Estado</th>
+                <th>Creado Por (Admin/Gerente)</th>
                 <th>Acciones</th>
             </tr>
         </thead>
         <tbody>
             {% for orden in ordenes %}
-            <tr class="estado-{{ orden.estado }}">
+            <tr>
                 <td>{{ orden.id }}</td>
-                <td>{{ orden.solicitante.nombre }}</td>
+                <td>{{ orden.solicitado_por }}</td>
                 <td>{{ orden.fecha_solicitud | localdatetime }}</td>
                 <td>
+                    <ul class="list-unstyled mb-0">
                     {% for detalle in orden.detalles %}
-                        {{ detalle.producto.nombre }} (x{{ detalle.cantidad_pedida }})<br>
+                        <li>{{ detalle.producto.nombre }} (x{{ detalle.cantidad_pedida }})</li>
                     {% endfor %}
+                    </ul>
                 </td>
-                <td><strong>{{ orden.estado }}</strong></td>
                 <td>
-                    <div class="actions-container">
-                        {% if orden.estado == 'ABIERTA' %}
-                            <a href="{{ url_for('cerrar_orden', orden_id=orden.id) }}" class="btn btn-warning">Cerrar Orden</a>
-                        {% else %}
-                            <span>Finalizada</span>
-                        {% endif %}
-                        <form method="POST" action="{{ url_for('admin_borrar_orden_historial', orden_id=orden.id) }}" onsubmit="return confirm('¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE este registro? La notificación le llegará al usuario.');">
-                            <button type="submit" class="btn btn-secondary">Eliminar</button>
-                        </form>
-                    </div>
+                    <span class="badge {% if orden.estado == 'ABIERTA' %}bg-success{% else %}bg-secondary{% endif %}">
+                        {{ orden.estado }}
+                    </span>
                 </td>
+                <td>{{ orden.creador.nombre }}</td>
+                <td>
+                    {% if orden.estado == 'ABIERTA' %}
+                    <a href="{{ url_for('cerrar_orden', orden_id=orden.id) }}" class="btn btn-warning btn-sm">Cerrar</a>
+                    {% endif %}
+                    <form action="{{ url_for('admin_borrar_orden_historial', orden_id=orden.id) }}" method="POST" class="d-inline" onsubmit="return confirm('¿Estás seguro de que quieres mover esta orden al historial?');">
+                        <button type="submit" class="btn btn-danger btn-sm">Borrar</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center">No hay órdenes activas.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
-
 {% endblock %}

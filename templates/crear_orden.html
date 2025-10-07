@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Nueva Orden{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Crear Nueva Orden</h2>
+    <hr>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('crear_orden') }}">
+                
+                <div class="mb-3">
+                    <label for="solicitado_por" class="form-label">Nombre de quien solicita:</label>
+                    <input type="text" class="form-control" id="solicitado_por" name="solicitado_por" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="producto_id" class="form-label">Producto:</label>
+                    <select class="form-select" id="producto_id" name="producto_id" required>
+                        <option value="" selected disabled>Selecciona un producto...</option>
+                        {% for producto in productos %}
+                            {% if producto.cantidad > 0 %}
+                                <option value="{{ producto.id }}">{{ producto.nombre }} (Disponible: {{ producto.cantidad }} {{ producto.unidad_medida }})</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label for="cantidad" class="form-label">Cantidad a solicitar:</label>
+                    <input type="number" step="any" class="form-control" id="cantidad" name="cantidad" required min="0.01">
+                </div>
+
+                <button type="submit" class="btn btn-primary">Crear Orden</button>
+                <a href="{{ url_for('admin_ordenes') }}" class="btn btn-secondary">Cancelar</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
