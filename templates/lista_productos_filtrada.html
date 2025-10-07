@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<h2 style="color: #007bff;">{{ titulo }}</h2>
+<p style="margin-bottom: 20px;">
+    Selecciona la cantidad de artículo para <strong>{{ 'PRESTAR' if tipo_accion == 'prestamo' else 'CONSUMIR' }}</strong>. 
+    <a href="{{ url_for('user_dashboard') }}" style="margin-left: 20px; color: #dc3545;">(Volver al Panel Principal)</a>
+</p>
+
+<div class="list-group">
+    {% for producto in productos %}
+    
+    {# Diseño de Fila/Lista compacta #}
+    <div class="card tipo-{{ producto.tipo }}" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; margin-bottom: 8px;">
+        
+        <div style="width: 40%;">
+            <strong style="font-size: 1.1em;">{{ producto.nombre }}</strong> <small>({{ producto.sku }})</small>
+        </div>
+        
+        <div style="width: 15%; text-align: center;">
+            Stock: <span class="stock-normal">{{ producto.stock_actual }}</span>
+        </div>
+
+        {# FORMULARIO DE SOLICITUD CON CANTIDAD #}
+        <form method="POST" action="{{ url_for('solicitar_producto', producto_id=producto.id) }}" style="display: flex; width: 40%; justify-content: flex-end; align-items: center;">
+            <input type="hidden" name="tipo" value="{{ tipo_accion }}">
+            
+            <input type="number" name="cantidad" class="form-control" value="1" min="1" max="{{ producto.stock_actual }}" required 
+                   style="width: 80px; margin-right: 10px;">
+            
+            <button type="submit" class="btn {% if tipo_accion == 'prestamo' %}btn-primary{% else %}btn-success{% endif %}" style="width: 100px;">
+                {{ 'Prestar' if tipo_accion == 'prestamo' else 'Consumir' }}
+            </button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

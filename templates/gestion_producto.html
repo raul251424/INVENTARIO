@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestión de Producto{% endblock %}
+
+{% block content %}
+<h2>{{ 'Crear Nuevo Producto' if not producto else 'Editar Producto' }}</h2>
+
+<div class="card form-card">
+    <form method="POST">
+        
+        <div class="form-group">
+            <label for="nombre">Nombre del Producto</label>
+            <input type="text" name="nombre" class="form-control" required 
+                   value="{{ producto.nombre if producto else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label for="tipo">Tipo de Producto</label>
+            <select name="tipo" class="form-control" required>
+                <option value="P" {% if producto and producto.tipo == 'P' %}selected{% endif %}>Prestable (Con Devolución)</option>
+                <option value="C" {% if producto and producto.tipo == 'C' %}selected{% endif %}>Consumible (Salida Directa)</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="stock_actual">Stock Inicial/Actual</label>
+            <input type="number" name="stock_actual" class="form-control" required 
+                   value="{{ producto.stock_actual if producto else 0 }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="stock_minimo">Stock Mínimo (Alerta)</label>
+            <input type="number" name="stock_minimo" class="form-control" required 
+                   value="{{ producto.stock_minimo if producto else 5 }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="sku">SKU (Código Interno)</label>
+            <input type="text" name="sku_display" class="form-control" readonly 
+                   value="{{ producto.sku if producto else 'Se asignará automáticamente' }}" 
+                   style="background-color: #f1f3f5;"> </div>
+
+        <div class="form-actions">
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Cancelar</a>
+            <button type="submit" class="btn btn-primary">Guardar Producto</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

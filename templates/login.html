@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block title %}Inicio de Sesión{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-box card">
+        <h2>Acceso al Inventario</h2>
+        
+        <form method="POST" action="{{ url_for('login') }}">
+            <div class="form-group">
+                <input type="email" name="email" class="form-control" placeholder="Correo Electrónico" required>
+            </div>
+            <div class="form-group">
+                <input type="password" name="password" class="form-control" placeholder="Contraseña" required>
+            </div>
+            <button type="submit" class="btn btn-primary">INGRESAR</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

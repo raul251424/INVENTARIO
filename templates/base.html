@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Inventario Flask{% endblock %}</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v=timestamp) }}">
+</head>
+<body>
+    {% if current_user.is_authenticated %}
+    <header class="header">
+        <h2>INVENTARIO | {{ 'ADMIN' if current_user.es_admin else 'USUARIO' }}</h2>
+        <nav>
+            <span>Bienvenido, {{ current_user.nombre }}</span>
+            {% if current_user.es_admin %}
+                <a href="{{ url_for('admin_dashboard') }}">Productos</a>
+                <a href="{{ url_for('admin_ordenes') }}">Órdenes</a>
+                <a href="{{ url_for('admin_historial') }}">Historial</a>
+                <a href="{{ url_for('admin_usuarios') }}">Usuarios</a>
+            {% else %}
+                <a href="{{ url_for('user_dashboard') }}">Inventario</a>
+                <a href="{{ url_for('user_historial_admin') }}">Historial</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="btn logout-btn">Cerrar Sesión</a>
+        </nav>
+    </header>
+    {% endif %}
+
+    <main class="container">
+        <div class="flashes">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="card {{ category }}"> 
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        {% block content %}
+        {% endblock %}
+    </main>
+</body>
+</html>

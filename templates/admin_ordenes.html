@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestión de Órdenes{% endblock %}
+
+{% block content %}
+<h2>Gestión de Órdenes de Préstamo</h2>
+
+<div class="card">
+    <h4>Órdenes Activas</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Solicitante</th>
+                <th>Fecha Solicitud</th>
+                <th>Productos</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for orden in ordenes %}
+            <tr class="estado-{{ orden.estado }}">
+                <td>{{ orden.id }}</td>
+                <td>{{ orden.solicitante.nombre }}</td>
+                <td>{{ orden.fecha_solicitud | localdatetime }}</td>
+                <td>
+                    {% for detalle in orden.detalles %}
+                        {{ detalle.producto.nombre }} (x{{ detalle.cantidad_pedida }})<br>
+                    {% endfor %}
+                </td>
+                <td><strong>{{ orden.estado }}</strong></td>
+                <td>
+                    <div class="actions-container">
+                        {% if orden.estado == 'ABIERTA' %}
+                            <a href="{{ url_for('cerrar_orden', orden_id=orden.id) }}" class="btn btn-warning">Cerrar Orden</a>
+                        {% else %}
+                            <span>Finalizada</span>
+                        {% endif %}
+                        <form method="POST" action="{{ url_for('admin_borrar_orden_historial', orden_id=orden.id) }}" onsubmit="return confirm('¿Estás seguro de que quieres ELIMINAR PERMANENTEMENTE este registro? La notificación le llegará al usuario.');">
+                            <button type="submit" class="btn btn-secondary">Eliminar</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

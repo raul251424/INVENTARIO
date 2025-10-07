@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block title %}Historial de Eliminaciones{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 style="color: #007bff; margin: 0;">Historial de Órdenes Eliminadas por el Administrador</h2>
+    <a href="{{ url_for('user_dashboard') }}" class="btn btn-secondary">Volver al Panel</a>
+</div>
+
+{% if historial %}
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID Original</th>
+                    <th>Productos</th>
+                    <th>Fecha Solicitud</th>
+                    <th>Fecha Eliminación</th>
+                    <th>Eliminada por</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in historial %}
+                    <tr class="historial-row">
+                        <td>{{ item.original_orden_id }}</td>
+                        <td>{{ item.productos_info }}</td>
+                        <td>{{ item.fecha_solicitud | localdatetime }}</td>
+                        <td>{{ item.fecha_eliminacion | localdatetime }}</td>
+                        <td>Admin: {{ item.eliminado_por_info }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="card" style="text-align: center; padding: 20px; color: #6c757d;">
+        <p>No hay registros de órdenes eliminadas por el administrador.</p>
+    </div>
+{% endif %}
+{% endblock %}

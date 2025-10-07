@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block title %}Cerrar Orden #{{ orden.id }}{% endblock %}
+
+{% block content %}
+<h2 style="color: #dc3545;">Cerrar y Finalizar Orden #{{ orden.id }}</h2>
+<p><strong>Solicitante:</strong> {{ orden.solicitante.nombre }} ({{ orden.solicitante.email }})</p>
+<p><strong>Fecha de Solicitud:</strong> {{ orden.fecha_solicitud | localdatetime }}</p>
+
+<div class="card" style="margin-top: 30px;">
+    <h4>Productos Solicitados (Solo Prestables se devuelven)</h4>
+    <form method="POST" action="{{ url_for('cerrar_orden', orden_id=orden.id) }}">
+        <table>
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th>Tipo</th>
+                    <th>Cantidad Pedida</th>
+                    <th>Cantidad Devuelta</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for detalle in orden.detalles %}
+                <tr>
+                    <td>{{ detalle.producto.nombre }} (SKU: {{ detalle.producto.sku }})</td>
+                    <td>
+                        <span class="tipo-{{ detalle.producto.tipo }}-texto">
+                            {% if detalle.producto.tipo == 'P' %}Prestables{% else %}Consumibles{% endif %}
+                        </span>
+                    </td>
+                    <td>{{ detalle.cantidad_pedida }}</td>
+                    <td>
+                        <input type="number" 
+                               name="devuelto_{{ detalle.id }}" 
+                               class="form-control" 
+                               value="{{ detalle.cantidad_pedida }}" 
+                               min="0" 
+                               max="{{ detalle.cantidad_pedida }}"
+                               {% if detalle.producto.tipo == 'C' %}disabled{% endif %}
+                               required>
+                        {% if detalle.producto.tipo == 'C' %}<small style="color: #6c757d;">No aplica devolución</small>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h4 style="margin-top: 30px;">Observaciones del Administrador</h4>
+        <div class="form-group">
+            <textarea name="observaciones" rows="3" class="form-control" placeholder="Ej: Herramienta dañada, se cobró faltante, etc."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-danger" style="width: 100%; margin-top: 20px;">Confirmar Cierre y Actualizar Stock</button>
+        <a href="{{ url_for('admin_ordenes') }}" class="btn btn-secondary" style="width: 100%; margin-top: 10px;">Cancelar</a>
+    </form>
+</div>
+{% endblock %}

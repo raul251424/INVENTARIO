@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}Panel de Administrador{% endblock %}
+
+{% block content %}
+<h2>Panel de Productos</h2>
+
+{% if productos_bajos_stock %}
+<div id="stock-alert" class="stock-alert-card">
+    <button class="close-btn" onclick="document.getElementById('stock-alert').style.display='none';">&times;</button>
+    <h4>¡Alerta de Stock Bajo!</h4>
+    <p>Los siguientes productos han alcanzado o están por debajo del stock mínimo:</p>
+    <ul>
+        {% for producto in productos_bajos_stock %}
+            <li>
+                <strong>{{ producto.nombre }}</strong>: 
+                Stock actual: {{ producto.stock_actual }} (Mínimo: {{ producto.stock_minimo }})
+            </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="dashboard-grid">
+    <a href="{{ url_for('gestionar_producto_admin') }}" style="text-decoration: none;">
+        <div class="card tipo-P"><h3>AÑADIR PRODUCTO</h3><p>Registrar un nuevo artículo en el inventario.</p></div>
+    </a>
+    <a href="{{ url_for('admin_ordenes') }}" style="text-decoration: none;">
+        <div class="card tipo-C"><h3>VER ÓRDENES ({{ ordenes_abiertas }})</h3><p>Gestionar préstamos y devoluciones.</p></div>
+    </a>
+</div>
+
+<h3>Listado General de Productos</h3>
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Stock Actual</th>
+                <th>Stock Mínimo</th>
+                <th>Tipo</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for producto in productos %}
+            <tr class="{% if producto.stock_actual <= producto.stock_minimo %}alerta-stock{% endif %}">
+                <td>{{ producto.id }}</td>
+                <td>{{ producto.nombre }}</td>
+                <td><strong>{{ producto.stock_actual }}</strong></td>
+                <td>{{ producto.stock_minimo }}</td>
+                <td>{{ 'Prestable' if producto.tipo == 'P' else 'Consumible' }}</td>
+                <td>
+                    <div class="actions-container">
+                        <a href="{{ url_for('gestionar_producto_admin', id=producto.id) }}" class="btn btn-primary">Editar</a>
+                        <form method="POST" action="{{ url_for('admin_borrar_producto', producto_id=producto.id) }}" onsubmit="return confirm('¿Estás seguro de que quieres eliminar este producto?');">
+                            <button type="submit" class="btn btn-danger">Eliminar</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

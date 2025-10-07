@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestión de Usuarios{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>Gestión de Usuarios</h2>
+    <a href="{{ url_for('admin_crear_usuario') }}" class="btn btn-success">Crear Nuevo Usuario</a>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Rol</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>{{ user.nombre }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ 'Admin' if user.es_admin else 'Normal' }}</td>
+                <td>
+                    <div class="actions-container">
+                        <a href="{{ url_for('admin_editar_usuario', user_id=user.id) }}" class="btn btn-primary">Editar</a>
+                        
+                        <form method="POST" action="{{ url_for('admin_borrar_usuario', user_id=user.id) }}" onsubmit="return confirm('¡ADVERTENCIA! ¿Estás seguro de que quieres eliminar a este usuario? Se borrarán también todas las órdenes asociadas a él.');">
+                            <button type="submit" class="btn btn-danger">Borrar</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

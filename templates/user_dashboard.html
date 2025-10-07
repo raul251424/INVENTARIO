@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}Inventario General{% endblock %}
+
+{% block content %}
+<h2 style="color: #007bff;">Inventario Disponible</h2>
+
+<div class="dashboard-grid" style="margin-bottom: 40px;">
+    <a href="{{ url_for('listar_prestables') }}" style="text-decoration: none;">
+        <div class="card tipo-P"><h3>PRESTAR EQUIPO</h3><p>Artículos para devolver</p></div>
+    </a>
+    <a href="{{ url_for('listar_consumibles') }}" style="text-decoration: none;">
+        <div class="card tipo-C"><h3>CONSUMIR ARTÍCULO</h3><p>Artículos de gasto único</p></div>
+    </a>
+</div>
+
+<h3 style="margin-top: 40px;">Mis Órdenes Activas</h3>
+<table>
+    <thead>
+        <tr>
+            <th>ID Orden</th>
+            <th>Fecha Solicitud</th>
+            <th>Estado</th>
+            <th>Productos Pedidos</th>
+            <th>Acción</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for orden in mis_ordenes %}
+        <tr class="estado-{{ orden.estado }}">
+            <td>{{ orden.id }}</td>
+            <td>{{ orden.fecha_solicitud | localdatetime }}</td>
+            <td>{{ orden.estado }}</td>
+            <td>
+                {% for detalle in orden.detalles %}
+                    {{ detalle.producto.nombre }} (x{{ detalle.cantidad_pedida }})<br>
+                {% endfor %}
+            </td>
+            <td>
+                {% if orden.estado == 'ABIERTA' %}
+                    <form method="POST" action="{{ url_for('user_borrar_orden', orden_id=orden.id) }}" onsubmit="return confirm('¿Estás seguro de que quieres cancelar esta solicitud? El stock será devuelto.');">
+                        <button type="submit" class="btn btn-danger">Cancelar Solicitud</button>
+                    </form>
+                {% else %}
+                    <form method="POST" action="{{ url_for('user_borrar_historial', orden_id=orden.id) }}" onsubmit="return confirm('¿Estás seguro de que quieres eliminar este registro de tu historial? El administrador recibirá una notificación.');">
+                        <button type="submit" class="btn btn-secondary">Borrar Historial</button>
+                    </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5" style="text-align: center; padding: 20px; color: #6c757d;">
+                No tienes órdenes activas.
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}
