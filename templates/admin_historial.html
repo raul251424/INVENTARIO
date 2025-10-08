@@ -1,66 +1,72 @@
 {% extends 'base.html' %}
+{% from '_macros.html' import render_pagination %}
 
-{% block title %}Historial Completo{% endblock %}
+{% block title %}Historial de Órdenes{% endblock %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <h2 style="color: #007bff; margin: 0;">Historial Completo de Órdenes Eliminadas</h2>
-    <a href="{{ url_for('admin_ordenes') }}" class="btn btn-secondary">Volver a Órdenes</a>
-</div>
-
-{% if historial %}
-    <form method="POST" action="{{ url_for('admin_borrar_historial_seleccion') }}" id="form-seleccion">
-        <div class="card">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 30px;"><input type="checkbox" id="select-all"></th>
-                        <th>ID Original</th>
-                        <th>Solicitante</th>
-                        <th>Productos</th>
-                        <th>Fecha Eliminación</th>
-                        <th>Eliminada por</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in historial %}
-                        <tr class="historial-row">
-                            <td><input type="checkbox" name="historial_ids" value="{{ item.id }}" class="item-checkbox"></td>
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title mb-0">Historial de Órdenes Borradas</h3>
+        <div>
+            <button type="submit" form="form-seleccion" class="btn btn-warning btn-sm"
+                    onclick="return confirm('¿Estás seguro de que quieres eliminar los registros seleccionados?');">
+                <i class="bi bi-trash"></i> Borrar Seleccionados
+            </button>
+            <form method="POST" action="{{ url_for('admin_borrar_historial_todo') }}" class="d-inline"
+                  onsubmit="return confirm('¡ADVERTENCIA! Esta acción es irreversible. ¿Estás seguro de que quieres borrar TODO el historial?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="btn btn-danger btn-sm">
+                    <i class="bi bi-exclamation-triangle"></i> Borrar Todo el Historial
+                </button>
+            </form>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <form method="POST" action="{{ url_for('admin_borrar_historial_seleccion') }}" id="form-seleccion">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="select-all"></th>
+                            <th># Orden</th>
+                            <th>Solicitante</th>
+                            <th>Productos</th>
+                            <th>Eliminado Por</th>
+                            <th>Fecha de Eliminación</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in historial %}
+                        <tr>
+                            <td><input type="checkbox" name="historial_ids" value="{{ item.id }}" class="form-check-input"></td>
                             <td>{{ item.original_orden_id }}</td>
                             <td>{{ item.solicitante_info }}</td>
-                            <td>{{ item.productos_info }}</td>
+                            <td><small>{{ item.productos_info }}</small></td>
+                            <td>{{ item.eliminado_por_info }}</td>
                             <td>{{ item.fecha_eliminacion | localdatetime }}</td>
-                            <td>{{ item.eliminado_por_info }} ({{ item.eliminado_por_rol }})</td>
                         </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </form> <div style="margin-top: 20px; display: flex; gap: 10px;">
-        
-        <button type="submit" form="form-seleccion" class="btn btn-warning" onclick="return confirm('¿Estás seguro de que quieres eliminar los registros seleccionados?');">
-            Eliminar Seleccionados
-        </button>
-        
-        <form method="POST" action="{{ url_for('admin_borrar_historial_todo') }}" style="margin: 0;" onsubmit="return confirm('¡ADVERTENCIA MÁXIMA! ¿Estás seguro de que quieres eliminar TODO el historial de forma permanente? Esta acción no se puede deshacer.');">
-            <button type="submit" class="btn btn-danger">
-                Borrar Todo el Historial
-            </button>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center p-4">El historial está vacío.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </form>
     </div>
+</div>
 
-{% else %}
-    <div class="card" style="text-align: center; padding: 20px; color: #6c757d;">
-        <p>No hay registros en el historial de eliminaciones.</p>
-    </div>
-{% endif %}
+{{ render_pagination(pagination, 'admin_historial') }}
 
+{% endblock %}
+
+{% block scripts %}
 <script>
-    document.getElementById('select-all').addEventListener('click', function(event) {
-        var checkboxes = document.querySelectorAll('.item-checkbox');
-        for (var checkbox of checkboxes) {
-            checkbox.checked = event.target.checked;
-        }
+document.getElementById('select-all').addEventListener('click', function(event) {
+    const checkboxes = document.querySelectorAll('input[name="historial_ids"]');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = event.target.checked;
     });
+});
 </script>
 {% endblock %}

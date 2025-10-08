@@ -1,56 +1,108 @@
-/* static/css/style.css (CÓDIGO LIMPIO Y ACTUALIZADO) */
+/* static/css/style.css (NUEVO DISEÑO COMPLETO) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* Estilos generales para el cuerpo de la página */
+:root {
+    --primary-color: #0d6efd;
+    --secondary-color: #6c757d;
+    --light-gray: #f8f9fa;
+    --dark-text: #212529;
+    --border-color: #dee2e6;
+    --body-bg: #f4f7fc;
+    --card-bg: #ffffff;
+    --shadow: 0 4px_6px rgba(0, 0, 0, 0.05);
+}
+
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    background-color: #f8f9fa;
-    color: #212529;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--body-bg);
+    color: var(--dark-text);
+    font-size: 0.95rem;
 }
 
-/* Estilos para la barra de navegación */
+/* --- Estilos para la página de Login --- */
+.login-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 2.5rem;
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+.login-card .form-control { padding: 0.75rem 1rem; }
+.login-card .btn { padding: 0.75rem; font-weight: 600; }
+
+/* --- Diseño General --- */
 .navbar {
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background-color: var(--card-bg) !important;
+    box-shadow: var(--shadow);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.75rem 0;
 }
+.navbar-brand { font-weight: 600; }
+.main-content { padding-top: 2rem; padding-bottom: 3rem; }
 
-/* Contenedor principal para darle un poco de aire */
-main.container {
-    padding-top: 1rem;
-    padding-bottom: 2rem;
-}
-
-/* Estilo para las tarjetas para que resalten más */
 .card {
     border: none;
-    border-radius: 0.5rem;
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1.5rem;
 }
-
-/* Títulos de las secciones */
-.border-bottom {
-    border-bottom-width: 2px !important;
+.card-header {
+    background-color: transparent;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
+.card-title { font-weight: 600; }
+.card-body { padding: 1.5rem; }
 
-/* Ajustes para tablas para que sean más legibles */
 .table-responsive {
-    margin-top: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
 }
-
+.table {
+    margin-bottom: 0;
+}
 .table thead th {
-    background-color: #e9ecef;
-    border-bottom-width: 2px;
+    background-color: var(--light-gray);
+    border-bottom-width: 1px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+.table td, .table th { vertical-align: middle; }
+.table-hover > tbody > tr:hover { background-color: #eef2f9; }
+
+.btn { border-radius: 0.5rem; font-weight: 500; }
+.btn-sm { padding: 0.25rem 0.6rem; }
+
+.form-label { font-weight: 500; }
+.form-control, .form-select { border-radius: 0.5rem; }
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
 }
 
-/* Estilos para los botones para que tengan un aspecto consistente */
-.btn {
-    border-radius: 0.25rem;
-    font-weight: 500;
+/* Paginación */
+.pagination .page-link {
+    color: var(--primary-color);
+}
+.pagination .page-item.active .page-link {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
 }
 
-.btn-primary {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
-}
-
-/* Asegurar que las alertas sean visibles */
-.alert {
-    border-radius: 0.5rem;
+/* Efecto de transición para filas de tabla */
+tr.fade-out {
+    opacity: 0;
+    transition: opacity 0.5s ease-out;
 }

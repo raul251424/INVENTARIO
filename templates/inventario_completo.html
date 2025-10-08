@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import render_pagination %}
+
+{% block title %}Inventario Completo{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title mb-0">Inventario Completo</h3>
+        <a href="{{ url_for('gestionar_producto') }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Añadir Producto</a>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('inventario_completo') }}" class="row g-3 align-items-center mb-4">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <input type="search" class="form-control" placeholder="Buscar por nombre..." name="search" value="{{ search_term or '' }}">
+                    <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <select name="estado_fisico" class="form-select" onchange="this.form.submit()">
+                    <option value="todos" {% if estado_fisico_filter == 'todos' %}selected{% endif %}>Todos los estados físicos</option>
+                    <option value="sólido" {% if estado_fisico_filter == 'sólido' %}selected{% endif %}>Sólido</option>
+                    <option value="líquido" {% if estado_fisico_filter == 'líquido' %}selected{% endif %}>Líquido</option>
+                    <option value="gaseoso" {% if estado_fisico_filter == 'gaseoso' %}selected{% endif %}>Gaseoso</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex justify-content-end align-items-center">
+                <label for="per_page" class="form-label me-2 mb-0">Mostrar:</label>
+                <select name="per_page" class="form-select w-auto" onchange="this.form.submit()">
+                    <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+                    <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                </select>
+            </div>
+             {% if search_term or estado_fisico_filter != 'todos' %}
+            <div class="col-12 text-center">
+                <a href="{{ url_for('inventario_completo') }}" class="btn btn-link text-secondary">Limpiar Filtros</a>
+            </div>
+            {% endif %}
+        </form>
+
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Cantidad</th>
+                        <th>Ubicación</th>
+                        <th>Estado Físico</th>
+                        <th>Estado Envase</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for producto in productos %}
+                    <tr id="producto-row-{{ producto.id }}">
+                        <td><strong>{{ producto.nombre }}</strong><br><small class="text-muted">{{ producto.formula_molecular or '' }}</small></td>
+                        <td>{{ producto.cantidad }} {{ producto.unidad_medida }}</td>
+                        <td>{{ producto.ubicacion_actual }}</td>
+                        <td>{{ (producto.estado_fisico or '') | capitalize }}</td>
+                        <td><span class="badge bg-secondary">{{ (producto.estado or '') | capitalize }}</span></td>
+                        <td>
+                            <a href="{{ url_for('gestionar_producto', id=producto.id) }}" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct({{ producto.id }})" title="Borrar"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center p-4">No se encontraron productos con los filtros aplicados.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{{ render_pagination(pagination, 'inventario_completo') }}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function deleteProduct(productId) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este producto?')) return;
+    
+    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch(`/panel/producto/borrar/${productId}`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': token }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const row = document.getElementById(`producto-row-${productId}`);
+            row.classList.add('fade-out');
+            setTimeout(() => row.remove(), 500);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+</script>
+{% endblock %}

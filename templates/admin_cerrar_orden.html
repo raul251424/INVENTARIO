@@ -1,57 +1,43 @@
 {% extends 'base.html' %}
-
 {% block title %}Cerrar Orden #{{ orden.id }}{% endblock %}
-
 {% block content %}
-<h2 style="color: #dc3545;">Cerrar y Finalizar Orden #{{ orden.id }}</h2>
-<p><strong>Solicitante:</strong> {{ orden.solicitante.nombre }} ({{ orden.solicitante.email }})</p>
-<p><strong>Fecha de Solicitud:</strong> {{ orden.fecha_solicitud | localdatetime }}</p>
+<div class="card">
+    <div class="card-header">
+        <h3>Cerrar Orden #{{ orden.id }}</h3>
+        <p class="mb-0"><strong>Solicitado por:</strong> {{ orden.solicitado_por }}</p>
+        <p class="mb-0"><strong>Creado por:</strong> {{ orden.creador.nombre }} el {{ orden.fecha_solicitud | localdatetime }}</p>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
-<div class="card" style="margin-top: 30px;">
-    <h4>Productos Solicitados (Solo Prestables se devuelven)</h4>
-    <form method="POST" action="{{ url_for('cerrar_orden', orden_id=orden.id) }}">
-        <table>
-            <thead>
-                <tr>
-                    <th>Producto</th>
-                    <th>Tipo</th>
-                    <th>Cantidad Pedida</th>
-                    <th>Cantidad Devuelta</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for detalle in orden.detalles %}
-                <tr>
-                    <td>{{ detalle.producto.nombre }} (SKU: {{ detalle.producto.sku }})</td>
-                    <td>
-                        <span class="tipo-{{ detalle.producto.tipo }}-texto">
-                            {% if detalle.producto.tipo == 'P' %}Prestables{% else %}Consumibles{% endif %}
-                        </span>
-                    </td>
-                    <td>{{ detalle.cantidad_pedida }}</td>
-                    <td>
-                        <input type="number" 
-                               name="devuelto_{{ detalle.id }}" 
-                               class="form-control" 
-                               value="{{ detalle.cantidad_pedida }}" 
-                               min="0" 
-                               max="{{ detalle.cantidad_pedida }}"
-                               {% if detalle.producto.tipo == 'C' %}disabled{% endif %}
-                               required>
-                        {% if detalle.producto.tipo == 'C' %}<small style="color: #6c757d;">No aplica devolución</small>{% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-
-        <h4 style="margin-top: 30px;">Observaciones del Administrador</h4>
-        <div class="form-group">
-            <textarea name="observaciones" rows="3" class="form-control" placeholder="Ej: Herramienta dañada, se cobró faltante, etc."></textarea>
-        </div>
-
-        <button type="submit" class="btn btn-danger" style="width: 100%; margin-top: 20px;">Confirmar Cierre y Actualizar Stock</button>
-        <a href="{{ url_for('admin_ordenes') }}" class="btn btn-secondary" style="width: 100%; margin-top: 10px;">Cancelar</a>
-    </form>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Producto</th>
+                        <th>Cantidad Pedida</th>
+                        <th>Cantidad Devuelta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for detalle in orden.detalles %}
+                    <tr>
+                        <td>{{ detalle.producto.nombre }}</td>
+                        <td>{{ detalle.cantidad_pedida }} {{ detalle.producto.unidad_medida }}</td>
+                        <td>
+                            <input type="number" step="any" class="form-control" name="devuelto_{{ detalle.id }}" value="0" min="0" max="{{ detalle.cantidad_pedida }}">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="mb-3">
+                <label for="observaciones" class="form-label">Observaciones (Opcional)</label>
+                <textarea class="form-control" id="observaciones" name="observaciones" rows="3"></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">Confirmar y Cerrar Orden</button>
+            <a href="{{ url_for('admin_ordenes') }}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
 </div>
 {% endblock %}

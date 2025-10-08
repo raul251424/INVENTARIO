@@ -1,4 +1,4 @@
-# requirements.txt (CÓDIGO COMPLETO Y NUEVO)
+# requirements.txt (Codificación UTF-8)
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
@@ -6,5 +6,5 @@ psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 pytz==2023.3.post1
 bcrypt==4.1.2
-SQLAlchemy==2.0.23
-Werkzeug==3.0.1
+Flask-WTF==1.2.1
+waitress==2.1.2
