@@ -1,4 +1,4 @@
-# app.py (CÓDIGO FINAL, COMPLETO Y VERIFICADO)
+# app.py (CÓDIGO FINAL, COMPLETO Y CORREGIDO)
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -155,24 +155,17 @@ def inventario_completo():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     if per_page not in [10, 25, 50]: per_page = 10
-    
     search_term = request.args.get('search', '', type=str)
     estado_fisico_filter = request.args.get('estado_fisico', 'todos', type=str)
-
     query = Producto.query.order_by(Producto.nombre)
-    
     if search_term:
         query = query.filter(Producto.nombre.ilike(f'%{search_term}%'))
     if estado_fisico_filter and estado_fisico_filter != 'todos':
         query = query.filter(Producto.estado_fisico == estado_fisico_filter)
-
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    
     return render_template('inventario_completo.html',
-                           productos=pagination.items,
-                           pagination=pagination,
-                           search_term=search_term,
-                           per_page=per_page,
+                           productos=pagination.items, pagination=pagination,
+                           search_term=search_term, per_page=per_page,
                            estado_fisico_filter=estado_fisico_filter)
 
 @app.route('/panel/ordenes')
@@ -201,16 +194,13 @@ def crear_orden():
             solicitado_por = request.form.get('solicitado_por')
             producto_id = int(request.form.get('producto_id'))
             cantidad = float(request.form.get('cantidad'))
-
             if not all([solicitado_por, producto_id, cantidad]):
                 flash('Todos los campos son obligatorios.', 'danger')
                 return render_template('crear_orden.html', productos=productos)
-
             producto = db.session.get(Producto, producto_id)
             if not producto or producto.cantidad is None or producto.cantidad < cantidad:
                 flash('Stock insuficiente para el producto seleccionado.', 'danger')
                 return render_template('crear_orden.html', productos=productos)
-
             nueva_orden = Orden(solicitado_por=solicitado_por, creado_por_id=current_user.id)
             detalle = DetalleOrden(orden=nueva_orden, producto_id=producto_id, cantidad_pedida=cantidad)
             producto.cantidad -= cantidad
@@ -268,37 +258,6 @@ def admin_historial():
     page = request.args.get('page', 1, type=int)
     pagination = OrdenHistorial.query.order_by(OrdenHistorial.fecha_eliminacion.desc()).paginate(page=page, per_page=25, error_out=False)
     return render_template('admin_historial.html', historial=pagination.items, pagination=pagination)
-
-# ***** RUTAS PARA BORRAR HISTORIAL RESTAURADAS *****
-@app.route('/panel/historial/borrar-seleccionados', methods=['POST'])
-@login_required
-def admin_borrar_historial_seleccion():
-    if not current_user.es_admin: abort(403)
-    ids_a_borrar = request.form.getlist('historial_ids')
-    if not ids_a_borrar:
-        flash('No has seleccionado ningún registro para eliminar.', 'warning')
-        return redirect(url_for('admin_historial'))
-    try:
-        OrdenHistorial.query.filter(OrdenHistorial.id.in_(ids_a_borrar)).delete(synchronize_session=False)
-        db.session.commit()
-        flash(f'Se han eliminado {len(ids_a_borrar)} registros del historial.', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Ocurrió un error al eliminar los registros: {e}', 'danger')
-    return redirect(url_for('admin_historial'))
-
-@app.route('/panel/historial/borrar-todo', methods=['POST'])
-@login_required
-def admin_borrar_historial_todo():
-    if not current_user.es_admin: abort(403)
-    try:
-        num_filas = db.session.query(OrdenHistorial).delete()
-        db.session.commit()
-        flash(f'Se ha borrado todo el historial ({num_filas} registros).', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Ocurrió un error al borrar el historial: {e}', 'danger')
-    return redirect(url_for('admin_historial'))
 
 @app.route('/panel/orden/borrar-historial/<int:orden_id>', methods=['POST'])
 @login_required
@@ -392,38 +351,46 @@ def admin_usuarios():
     pagination = User.query.filter(User.id != current_user.id).order_by(User.nombre).paginate(page=page, per_page=10, error_out=False)
     return render_template('admin_usuarios.html', users=pagination.items, pagination=pagination)
 
+# ***** RUTA GESTIONAR_USUARIO CORREGIDA Y COMPLETA *****
 @app.route('/panel/usuario/gestion', methods=['GET', 'POST'])
 @app.route('/panel/usuario/gestion/<int:id>', methods=['GET', 'POST'])
 @login_required
 def gestionar_usuario(id=None):
-    if not current_user.es_admin: abort(403)
+    if not current_user.es_admin:
+        abort(403)
+    
     user = db.session.get(User, id) if id else None
+
     if request.method == 'POST':
         email = request.form.get('email')
+        nombre = request.form.get('nombre')
+        rol = request.form.get('rol')
+        password = request.form.get('password')
+
         existing_user = User.query.filter(User.email == email).first()
         if existing_user and (user is None or existing_user.id != user.id):
-            flash('El correo ya está en uso.', 'danger')
+            flash('El correo electrónico ya está en uso por otro usuario.', 'danger')
             return render_template('gestion_usuario.html', user=user)
 
         if user is None:
-            password = request.form['password']
             if not password:
-                flash('La contraseña es obligatoria para nuevos usuarios.', 'danger')
+                flash('La contraseña es obligatoria para los nuevos usuarios.', 'danger')
                 return render_template('gestion_usuario.html', user=user)
-            new_user = User(nombre=request.form['nombre'], email=email, es_admin=(request.form.get('rol') == 'admin'))
+            new_user = User(nombre=nombre, email=email, es_admin=(rol == 'admin'))
             new_user.set_password(password)
             db.session.add(new_user)
             flash('Usuario creado con éxito.', 'success')
         else:
-            user.nombre = request.form['nombre']
+            user.nombre = nombre
             user.email = email
-            user.es_admin = (request.form.get('rol') == 'admin')
-            password = request.form['password']
+            user.es_admin = (rol == 'admin')
             if password:
                 user.set_password(password)
             flash('Usuario actualizado con éxito.', 'success')
+        
         db.session.commit()
         return redirect(url_for('admin_usuarios'))
+
     return render_template('gestion_usuario.html', user=user)
 
 @app.route('/panel/usuario/borrar/<int:id>', methods=['POST'])
@@ -437,7 +404,7 @@ def borrar_usuario(id):
         else:
             db.session.delete(user_a_borrar)
             db.session.commit()
-            flash(f'El usuario "{user_a_borrar.nombre}" ha sido eliminado.', 'success')
+            flash(f'Usuario "{user_a_borrar.nombre}" eliminado.', 'success')
     return redirect(url_for('admin_usuarios'))
 
 # --- COMANDOS CLI ---
