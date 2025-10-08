@@ -1,18 +1,30 @@
-# Ruta del ejecutable de Git (cambia si tu ruta es distinta)
+# Ruta del ejecutable de Git
 $gitPath = "C:\Program Files\Git\cmd\git.exe"
 
-# Mensaje automático de commit con fecha y hora
-$date = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$commitMessage = "Auto-commit: $date"
-
-# Ir a la carpeta del proyecto (cambia si tu proyecto está en otra ruta)
+# Ir al directorio del proyecto
 Set-Location "D:\INVENTARIO_FLASK"
 
-# Agregar todos los archivos al commit
-& $gitPath add .
+# Detectar si hay cambios (archivos nuevos, modificados o eliminados)
+$changes = & $gitPath status --porcelain
 
-# Crear commit con mensaje automático
-& $gitPath commit -m $commitMessage
+if ($changes) {
+    # Mensaje automático de commit con la hora actual
+    $date = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $commitMessage = "Auto-commit: cambios detectados el $date"
 
-# Subir los cambios al repositorio remoto
-& $gitPath push
+    Write-Host "🔹 Cambios detectados. Haciendo commit y push..." -ForegroundColor Cyan
+    
+    # Agregar todos los cambios
+    & $gitPath add .
+
+    # Crear el commit
+    & $gitPath commit -m $commitMessage
+
+    # Subir cambios al repositorio remoto
+    & $gitPath push
+
+    Write-Host "✅ Cambios subidos correctamente a GitHub." -ForegroundColor Green
+} 
+else {
+    Write-Host "🟢 No hay cambios nuevos, no se realizó ningún commit." -ForegroundColor Yellow
+}
