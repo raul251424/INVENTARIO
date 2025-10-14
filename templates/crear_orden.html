@@ -1,52 +1,53 @@
 {% extends "base.html" %}
-
-{% block title %}Nueva Orden{% endblock %}
+{% block title %}Crear Nueva Orden{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h3 class="card-title mb-0">Crear Nueva Orden</h3>
+<div class="card shadow-lg mb-4">
+    <div class="card-header bg-primary text-white">
+        <h3 class="card-title mb-0"><i class="bi bi-journal-plus me-2"></i> Crear Nueva Orden de Salida</h3>
     </div>
     <div class="card-body">
+        <p class="alert alert-info">
+            <i class="bi bi-info-circle-fill me-2"></i>
+            Este formulario creará una nueva orden y descontará la cantidad solicitada del stock del inventario.
+        </p>
+
         <form method="POST" action="{{ url_for('crear_orden') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            <div class="mb-3">
-                <label for="solicitado_por" class="form-label">Nombre de quien solicita:</label>
-                <input type="text" class="form-control" id="solicitado_por" name="solicitado_por" required>
+
+            <div class="row g-3">
+                <div class="col-md-12">
+                    <label for="solicitado_por" class="form-label fw-bold">Solicitado Por:</label>
+                    <input type="text" class="form-control" id="solicitado_por" name="solicitado_por" placeholder="Nombre completo del solicitante" required>
+                </div>
+
+                <div class="col-md-8">
+                    <label for="producto_id" class="form-label fw-bold">Producto:</label>
+                    <select class="form-select" id="producto_id" name="producto_id" required>
+                        <option value="" disabled selected>-- Selecciona un producto del inventario --</option>
+                        {% for producto in productos %}
+                            <option value="{{ producto.id }}">
+                                {{ producto.nombre }} (Disponible: {{ producto.cantidad }} {{ producto.unidad_medida }})
+                            </option>
+                        {% else %}
+                            <option disabled>No hay productos con stock disponible.</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="cantidad" class="form-label fw-bold">Cantidad a Retirar:</label>
+                    <input type="number" step="any" class="form-control" id="cantidad" name="cantidad" required min="0.01" placeholder="Ej: 10.5">
+                </div>
             </div>
 
-            <div class="mb-3">
-                <label for="producto_id" class="form-label">Producto:</label>
-                <select class="form-select" id="producto_id" name="producto_id" required>
-                    <option></option> {% for producto in productos %}
-                        <option value="{{ producto.id }}">{{ producto.nombre }} (Disponible: {{ producto.cantidad }})</option>
-                    {% endfor %}
-                </select>
+            <hr class="my-4">
+            
+            <div class="d-flex justify-content-end">
+                <a href="{{ url_for('admin_ordenes') }}" class="btn btn-secondary me-2">Cancelar</a>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i> Crear Orden</button>
             </div>
-
-            <div class="mb-3">
-                <label for="cantidad" class="form-label">Cantidad a solicitar:</label>
-                <input type="number" step="any" class="form-control" id="cantidad" name="cantidad" required min="0.01">
-            </div>
-
-            <hr>
-            <button type="submit" class="btn btn-primary">Crear Orden</button>
-            <a href="{{ url_for('admin_ordenes') }}" class="btn btn-secondary">Cancelar</a>
         </form>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script>
-    $(document).ready(function() {
-        $('#producto_id').select2({
-            placeholder: "Escribe para buscar un producto...",
-            allowClear: true
-        });
-    });
-</script>
 {% endblock %}

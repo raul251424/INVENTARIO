@@ -3,33 +3,35 @@
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
-    <h1 class="h2">Inicio</h1>
+    <h1 class="h2 text-primary">Panel de Control</h1>
 </div>
 <div class="row">
     <div class="col-md-6 mb-4">
-        <div class="card h-100">
+        <div class="card h-100 shadow-sm border-primary">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <h5 class="card-title">Total de Productos en Inventario</h5>
-                <p class="fs-1 fw-bold text-primary mb-0">{{ total_productos }}</p>
+                <h5 class="card-title text-muted"><i class="bi bi-box-seam me-2"></i> Total de Productos en Inventario</h5>
+                <p class="fs-1 fw-bolder text-primary mb-0">{{ total_productos }}</p>
+                <small class="text-muted">Elementos únicos</small>
             </div>
         </div>
     </div>
     <div class="col-md-6 mb-4">
-        <div class="card h-100">
+        <div class="card h-100 shadow-sm border-success">
             <div class="card-body text-center d-flex flex-column justify-content-center">
-                <h5 class="card-title">Órdenes Abiertas</h5>
-                <p class="fs-1 fw-bold text-success mb-0">{{ ordenes_abiertas }}</p>
+                <h5 class="card-title text-muted"><i class="bi bi-clipboard-check me-2"></i> Órdenes Abiertas</h5>
+                <p class="fs-1 fw-bolder text-success mb-0">{{ ordenes_abiertas }}</p>
+                <small class="text-muted">Pendientes de cerrar</small>
             </div>
         </div>
     </div>
 </div>
-<div class="card">
-    <div class="card-header">
-        Productos Añadidos Recientemente
+<div class="card shadow-sm mt-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0 text-dark"><i class="bi bi-clock-history me-2"></i> Productos Añadidos Recientemente</h5>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-striped table-hover mb-0">
                 <thead>
                     <tr>
                         <th>Nombre</th>
@@ -42,11 +44,17 @@
                     <tr>
                         <td>{{ producto.nombre }}</td>
                         <td>{{ producto.cantidad }} {{ producto.unidad_medida }}</td>
-                        <td>{{ producto.ubicacion_actual }}</td>
+                        <td>
+                            {% if producto.ubicacion_actual == 'otro' %}
+                                {{ producto.otra_ubicacion_actual or 'Otro (Sin Especificar)' }}
+                            {% else %}
+                                {{ producto.ubicacion_actual }}
+                            {% endif %}
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="3" class="text-center">No hay productos recientes.</td>
+                        <td colspan="3" class="text-center p-3 text-muted">No hay productos recientes.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

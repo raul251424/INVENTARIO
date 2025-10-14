@@ -3,7 +3,7 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h3>Cerrar Orden #{{ orden.id }}</h3>
+        <h3>Cerrar y Revisar Uso de Orden #{{ orden.id }}</h3>
         <p class="mb-0"><strong>Solicitado por:</strong> {{ orden.solicitado_por }}</p>
         <p class="mb-0"><strong>Creado por:</strong> {{ orden.creador.nombre }} el {{ orden.fecha_solicitud | localdatetime }}</p>
     </div>
@@ -11,28 +11,33 @@
         <form method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Producto</th>
-                        <th>Cantidad Pedida</th>
-                        <th>Cantidad Devuelta</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for detalle in orden.detalles %}
-                    <tr>
-                        <td>{{ detalle.producto.nombre }}</td>
-                        <td>{{ detalle.cantidad_pedida }} {{ detalle.producto.unidad_medida }}</td>
-                        <td>
-                            <input type="number" step="any" class="form-control" name="devuelto_{{ detalle.id }}" value="0" min="0" max="{{ detalle.cantidad_pedida }}">
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <p class="alert alert-info">Ajuste la cantidad devuelta. La cantidad que NO se devuelva se resta permanentemente del stock (se asume consumida).</p>
+
+            <div class="table-responsive mb-4">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Cantidad Retirada</th>
+                            <th>Cantidad Devuelta (a Stock)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for detalle in orden.detalles %}
+                        <tr>
+                            <td>{{ detalle.producto.nombre }}</td>
+                            <td><span class="fw-bold">{{ detalle.cantidad_pedida }}</span> {{ detalle.producto.unidad_medida }}</td>
+                            <td>
+                                <input type="number" step="any" class="form-control" name="devuelto_{{ detalle.id }}" value="0" min="0" max="{{ detalle.cantidad_pedida }}" placeholder="0.00" required>
+                                <small class="text-muted">Máx: {{ detalle.cantidad_pedida }}</small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
             <div class="mb-3">
-                <label for="observaciones" class="form-label">Observaciones (Opcional)</label>
+                <label for="observaciones" class="form-label">Observaciones y Comentarios de Cierre (Opcional)</label>
                 <textarea class="form-control" id="observaciones" name="observaciones" rows="3"></textarea>
             </div>
             <button type="submit" class="btn btn-success">Confirmar y Cerrar Orden</button>

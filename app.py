@@ -1,17 +1,19 @@
-# app.py (CÓDIGO FINAL, COMPLETO Y CORREGIDO)
+# app.py (CÓDIGO FINAL CON SESIÓN AUTOMÁTICA DE 15 MINUTOS + LOGOUT EN PESTAÑA)
 
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify, session, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
 from dotenv import load_dotenv
 from os import getenv
-from datetime import datetime
+from datetime import datetime, timedelta # Importación necesaria
 import pytz
 import bcrypt
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 import time
+import csv # Añadido para la función de exportación (backup)
+from io import StringIO # Añadido para la función de exportación (backup)
 
 # --- INICIALIZACIÓN Y CONFIGURACIÓN ---
 load_dotenv()
@@ -22,6 +24,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = getenv('SECRET_KEY', 'un-secreto-muy-fuerte-y-dificil-de-adivinar')
 app.config['TIMEZONE'] = 'America/Mexico_City'
 
+# --- CAPA 1: CONFIGURACIÓN DE TIEMPO DE LA SESIÓN (CONFIGURADO A 15 MINUTOS) ---
+# La sesión expirará después de 15 minutos de inactividad.
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
+
 # --- EXTENSIONES ---
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -30,6 +36,13 @@ csrf = CSRFProtect(app)
 login_manager.login_view = 'login'
 login_manager.login_message = "Por favor, inicia sesión para acceder."
 login_manager.login_message_category = "info"
+
+# --- CORRECCIÓN DE SESIÓN: SE ELIMINA BEFORE_REQUEST ---
+# La función make_session_permanent() se ha movido al bloque de login exitoso
+# para evitar conflictos que cerraban la sesión inmediatamente.
+# @app.before_request
+# def make_session_permanent():
+#     session.permanent = True
 
 # --- HELPERS Y FILTROS DE PLANTILLAS ---
 @app.context_processor
@@ -49,7 +62,7 @@ def format_datetime_local(dt):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# --- MODELOS DE BASE DE DATOS ---
+# --- MODELOS DE BASE DE DATOS (Sin cambios) ---
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -119,19 +132,30 @@ class OrdenHistorial(db.Model):
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('admin_dashboard'))
+    
     if request.method == 'POST':
-        user = User.query.filter_by(email=request.form.get('email')).first()
-        if user and user.check_password(request.form.get('password', '')):
-            login_user(user, remember=True)
+        email = request.form.get('email')
+        password = request.form.get('password')
+        user = User.query.filter_by(email=email).first()
+        
+        if user and user.check_password(password):
+            login_user(user)
+            # --- CORRECCIÓN DE SESIÓN: HACER LA SESIÓN PERMANENTE AQUÍ ---
+            session.permanent = True
             return redirect(url_for('admin_dashboard'))
-        flash('Credenciales incorrectas.', 'danger')
+        else:
+            flash('Correo electrónico o contraseña no válidos.', 'danger')
+            
     return render_template('login.html')
 
-@app.route('/logout')
+# --- CAMBIO: AHORA LOGOUT ACEPTA PETICIONES GET Y POST ---
+@app.route('/logout', methods=['GET', 'POST'])
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('login'))
+    if request.method == 'POST':
+        return '', 204 # Respuesta vacía para el script
+    return redirect(url_for('login')) # Redirección para el clic normal
 
 @app.route('/')
 def dashboard_router():
@@ -155,18 +179,31 @@ def inventario_completo():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 10, type=int)
     if per_page not in [10, 25, 50]: per_page = 10
+    
     search_term = request.args.get('search', '', type=str)
     estado_fisico_filter = request.args.get('estado_fisico', 'todos', type=str)
+    unidad_medida_filter = request.args.get('unidad_medida', 'todas', type=str)
+    estado_envase_filter = request.args.get('estado_envase', 'todos', type=str)
+
     query = Producto.query.order_by(Producto.nombre)
+    
     if search_term:
         query = query.filter(Producto.nombre.ilike(f'%{search_term}%'))
-    if estado_fisico_filter and estado_fisico_filter != 'todos':
+    if estado_fisico_filter != 'todos':
         query = query.filter(Producto.estado_fisico == estado_fisico_filter)
+    if unidad_medida_filter != 'todas':
+        query = query.filter(Producto.unidad_medida == unidad_medida_filter)
+    if estado_envase_filter != 'todos':
+        query = query.filter(Producto.estado == estado_envase_filter) 
+
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
     return render_template('inventario_completo.html',
                            productos=pagination.items, pagination=pagination,
                            search_term=search_term, per_page=per_page,
-                           estado_fisico_filter=estado_fisico_filter)
+                           estado_fisico_filter=estado_fisico_filter,
+                           unidad_medida_filter=unidad_medida_filter,
+                           estado_envase_filter=estado_envase_filter)
 
 @app.route('/panel/ordenes')
 @login_required
@@ -259,6 +296,39 @@ def admin_historial():
     pagination = OrdenHistorial.query.order_by(OrdenHistorial.fecha_eliminacion.desc()).paginate(page=page, per_page=25, error_out=False)
     return render_template('admin_historial.html', historial=pagination.items, pagination=pagination)
 
+@app.route('/panel/historial/borrar-seleccion', methods=['POST'])
+@login_required
+def admin_borrar_historial_seleccion():
+    if not current_user.es_admin: abort(403)
+    historial_ids = request.form.getlist('historial_ids')
+    if not historial_ids:
+        flash('No se seleccionó ningún registro.', 'warning')
+        return redirect(url_for('admin_historial'))
+
+    try:
+        OrdenHistorial.query.filter(OrdenHistorial.id.in_(historial_ids)).delete(synchronize_session='fetch')
+        db.session.commit()
+        flash(f'Se eliminaron {len(historial_ids)} registros del historial.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al eliminar registros: {e}', 'danger')
+    
+    return redirect(url_for('admin_historial'))
+
+@app.route('/panel/historial/borrar-todo', methods=['POST'])
+@login_required
+def admin_borrar_historial_todo():
+    if not current_user.es_admin: abort(403)
+    try:
+        num_deleted = db.session.query(OrdenHistorial).delete()
+        db.session.commit()
+        flash(f'¡ADVERTENCIA! Se eliminaron {num_deleted} registros. El historial está vacío.', 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar todo el historial: {e}', 'danger')
+    
+    return redirect(url_for('admin_historial'))
+
 @app.route('/panel/orden/borrar-historial/<int:orden_id>', methods=['POST'])
 @login_required
 def admin_borrar_orden_historial(orden_id):
@@ -320,15 +390,19 @@ def cerrar_orden(orden_id):
         try:
             for detalle in orden.detalles:
                 input_name = f"devuelto_{detalle.id}"
-                cantidad_devuelta = float(request.form.get(input_name, 0))
+                cantidad_devuelta_str = request.form.get(input_name, '0')
+                cantidad_devuelta = float(cantidad_devuelta_str) if cantidad_devuelta_str else 0.0
+                    
                 if not (0 <= cantidad_devuelta <= detalle.cantidad_pedida):
                     flash(f'La cantidad devuelta para "{detalle.producto.nombre}" no es válida.', 'danger')
                     return render_template('admin_cerrar_orden.html', orden=orden)
+                
                 detalle.cantidad_devuelta = cantidad_devuelta
                 producto = db.session.get(Producto, detalle.producto_id)
                 if producto:
                     if producto.cantidad is None: producto.cantidad = 0
-                    producto.cantidad += cantidad_devuelta
+                    producto.cantidad += cantidad_devuelta 
+                    
             orden.estado = 'CERRADA'
             orden.fecha_cierre = datetime.utcnow()
             orden.observaciones = request.form.get('observaciones', '')
@@ -351,16 +425,12 @@ def admin_usuarios():
     pagination = User.query.filter(User.id != current_user.id).order_by(User.nombre).paginate(page=page, per_page=10, error_out=False)
     return render_template('admin_usuarios.html', users=pagination.items, pagination=pagination)
 
-# ***** RUTA GESTIONAR_USUARIO CORREGIDA Y COMPLETA *****
 @app.route('/panel/usuario/gestion', methods=['GET', 'POST'])
 @app.route('/panel/usuario/gestion/<int:id>', methods=['GET', 'POST'])
 @login_required
 def gestionar_usuario(id=None):
-    if not current_user.es_admin:
-        abort(403)
-    
+    if not current_user.es_admin: abort(403)
     user = db.session.get(User, id) if id else None
-
     if request.method == 'POST':
         email = request.form.get('email')
         nombre = request.form.get('nombre')

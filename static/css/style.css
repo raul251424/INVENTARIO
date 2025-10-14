@@ -1,4 +1,4 @@
-/* static/css/style.css (NUEVO DISEÑO COMPLETO) */
+/* static/css/style.css (CÓDIGO FINAL CORREGIDO) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
@@ -9,7 +9,7 @@
     --border-color: #dee2e6;
     --body-bg: #f4f7fc;
     --card-bg: #ffffff;
-    --shadow: 0 4px_6px rgba(0, 0, 0, 0.05);
+    --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 body {
@@ -17,6 +17,8 @@ body {
     background-color: var(--body-bg);
     color: var(--dark-text);
     font-size: 0.95rem;
+    margin: 0;
+    padding: 0;
 }
 
 /* --- Estilos para la página de Login --- */
@@ -26,6 +28,7 @@ body {
     justify-content: center;
     min-height: 100vh;
 }
+
 .login-card {
     width: 100%;
     max-width: 400px;
@@ -33,26 +36,50 @@ body {
     border: none;
     border-radius: 0.75rem;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    background-color: var(--card-bg);
 }
-.login-card .form-control { padding: 0.75rem 1rem; }
-.login-card .btn { padding: 0.75rem; font-weight: 600; }
 
-/* --- Diseño General --- */
-.navbar {
-    background-color: var(--card-bg) !important;
-    box-shadow: var(--shadow);
-    border-bottom: 1px solid var(--border-color);
-    padding: 0.75rem 0;
+/* --- ESTILOS PARA BARRA DE NAVEGACIÓN CLARA --- */
+.navbar.bg-light {
+    background-color: #ffffff !important; /* Forzar fondo blanco */
+    border-bottom: 1px solid var(--border-color); /* Añadir un borde sutil */
 }
-.navbar-brand { font-weight: 600; }
-.main-content { padding-top: 2rem; padding-bottom: 3rem; }
 
+/* Forzar texto negro para los enlaces del menú */
+.navbar-light .navbar-nav .nav-link {
+    color: #212529 !important; /* Texto negro */
+}
+.navbar-light .navbar-nav .nav-link:hover {
+    color: var(--primary-color) !important; /* Color azul al pasar el cursor */
+}
+
+/* Asegurar texto negro para el nombre de usuario */
+.navbar-light .dropdown a.d-block {
+    color: #212529 !important;
+}
+
+/* Mantener el logo en color azul */
+.navbar-brand {
+    font-weight: 700 !important;
+    color: var(--primary-color) !important;
+}
+
+
+/* --- Main Content --- */
+.main-content {
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
+
+/* --- Cards --- */
 .card {
     border: none;
     border-radius: 0.75rem;
     box-shadow: var(--shadow);
     margin-bottom: 1.5rem;
+    background-color: var(--card-bg);
 }
+
 .card-header {
     background-color: transparent;
     border-bottom: 1px solid var(--border-color);
@@ -62,16 +89,18 @@ body {
     justify-content: space-between;
     align-items: center;
 }
-.card-title { font-weight: 600; }
-.card-body { padding: 1.5rem; }
 
+/* ... (el resto del archivo CSS sigue igual) ... */
 .table-responsive {
     border: 1px solid var(--border-color);
     border-radius: 0.75rem;
+    overflow: hidden;
 }
+
 .table {
     margin-bottom: 0;
 }
+
 .table thead th {
     background-color: var(--light-gray);
     border-bottom-width: 1px;
@@ -79,30 +108,11 @@ body {
     font-size: 0.85rem;
     text-transform: uppercase;
 }
-.table td, .table th { vertical-align: middle; }
-.table-hover > tbody > tr:hover { background-color: #eef2f9; }
 
-.btn { border-radius: 0.5rem; font-weight: 500; }
-.btn-sm { padding: 0.25rem 0.6rem; }
-
-.form-label { font-weight: 500; }
-.form-control, .form-select { border-radius: 0.5rem; }
-.form-control:focus, .form-select:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+.table td, .table th {
+    vertical-align: middle;
 }
 
-/* Paginación */
-.pagination .page-link {
-    color: var(--primary-color);
-}
-.pagination .page-item.active .page-link {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
-}
-
-/* Efecto de transición para filas de tabla */
-tr.fade-out {
-    opacity: 0;
-    transition: opacity 0.5s ease-out;
+.table-hover > tbody > tr:hover {
+    background-color: #eef2f9;
 }
