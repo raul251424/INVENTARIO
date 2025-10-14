@@ -1,4 +1,4 @@
-# app.py (CÓDIGO FINAL CON SESIÓN AUTOMÁTICA DE 15 MINUTOS + LOGOUT EN PESTAÑA)
+# app.py (CÓDIGO FINAL CON DETECCIÓN AUTOMÁTICA DE DELIMITADOR CSV)
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify, session, Response
 from flask_sqlalchemy import SQLAlchemy
@@ -12,8 +12,8 @@ import bcrypt
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError
 import time
-import csv # Añadido para la función de exportación (backup)
-from io import StringIO # Añadido para la función de exportación (backup)
+import csv # Añadido para la función de exportación (backup) y ahora para importar
+from io import StringIO # Añadido para la función de exportación (backup) y ahora para importar
 
 # --- INICIALIZACIÓN Y CONFIGURACIÓN ---
 load_dotenv()
@@ -24,7 +24,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = getenv('SECRET_KEY', 'un-secreto-muy-fuerte-y-dificil-de-adivinar')
 app.config['TIMEZONE'] = 'America/Mexico_City'
 
-# --- CAPA 1: CONFIGURACIÓN DE TIEMPO DE LA SESIÓN (CONFIGURADO A 15 MINUTOS) ---
 # La sesión expirará después de 15 minutos de inactividad.
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
 
@@ -81,7 +80,7 @@ class User(db.Model, UserMixin):
 class Producto(db.Model):
     __tablename__ = 'producto'
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(200), nullable=False, index=True)
+    nombre = db.Column(db.String(200), nullable=False, unique=True, index=True) # Nombre debe ser único
     ubicacion = db.Column(db.String(100))
     estante = db.Column(db.String(50))
     nombre_cana = db.Column(db.String(100))
@@ -205,7 +204,170 @@ def inventario_completo():
                            unidad_medida_filter=unidad_medida_filter,
                            estado_envase_filter=estado_envase_filter)
 
+# --- RUTA DE IMPORTACIÓN CSV CON DETECCIÓN DE DELIMITADOR ---
+@app.route('/panel/inventario/importar', methods=['GET', 'POST'])
+@login_required
+def importar_inventario():
+    # Solo los administradores deberían poder realizar importaciones masivas
+    if not current_user.es_admin: 
+        abort(403)
+
+    if request.method == 'POST':
+        if 'archivo_csv' not in request.files:
+            flash('No se seleccionó ningún archivo.', 'danger')
+            return redirect(request.url)
+        
+        file = request.files['archivo_csv']
+        if file.filename == '':
+            flash('No se seleccionó ningún archivo.', 'danger')
+            return redirect(request.url)
+
+        if file and file.filename.lower().endswith('.csv'):
+            
+            # --- Lógica de detección de delimitador ---
+            file_content = file.stream.read().decode("utf-8")
+            stream = StringIO(file_content)
+            
+            # Leer las primeras líneas para deducir el delimitador
+            dialect = csv.Sniffer().sniff(stream.read(1024), delimiters=',;\t')
+            stream.seek(0) # Regresar al inicio para que el DictReader lea todo
+            
+            # Si el delimitador detectado es un espacio o no es uno común, usar coma por defecto
+            if dialect.delimiter not in [',', ';', '\t']:
+                delimiter = ','
+            else:
+                delimiter = dialect.delimiter
+            
+            # --- Fin de lógica de detección de delimitador ---
+
+            try:
+                reader = csv.DictReader(stream, delimiter=delimiter)
+                
+                required_fields = ['nombre', 'cantidad', 'unidad_medida'] 
+                
+                # Definición de los campos del modelo Producto para mapear
+                field_mapping = {
+                    'nombre': 'nombre',
+                    'ubicacion': 'ubicacion',
+                    'estante': 'estante',
+                    'nombre_cana': 'nombre_cana',
+                    'nombre_IUPAC': 'nombre_IUPAC',
+                    'formula_molecular': 'formula_molecular',
+                    'cast_sigmg': 'cast_sigmg',
+                    'estado_fisico': 'estado_fisico',
+                    'cantidad': 'cantidad',
+                    'unidad_medida': 'unidad_medida',
+                    'estado': 'estado',
+                    'ubicacion_actual': 'ubicacion_actual',
+                    'otra_ubicacion_actual': 'otra_ubicacion_actual',
+                }
+
+                imported_count = 0
+                updated_count = 0
+                error_list = []
+                row_number = 1 
+                
+                # Validar que los campos mínimos existan en los encabezados
+                missing_headers = [field for field in required_fields if field not in reader.fieldnames]
+                if missing_headers:
+                    flash(f'Importación fallida. Faltan los encabezados obligatorios en el archivo CSV: {", ".join(missing_headers)}.', 'danger')
+                    return render_template('importar_inventario.html', errors=[f'Encabezados faltantes: {", ".join(missing_headers)}'])
+
+
+                for row in reader:
+                    row_number += 1
+                    nombre = "" # Inicializar nombre para usar en mensajes de error
+                    
+                    # 1. Validación de campos mínimos
+                    if not all(row.get(field) for field in required_fields):
+                        error_list.append(f"Fila {row_number}: Faltan campos obligatorios ({', '.join(required_fields)}).")
+                        continue
+                    
+                    try:
+                        nombre = row['nombre'].strip()
+                        
+                        # 2. Buscar/Crear producto
+                        producto = Producto.query.filter_by(nombre=nombre).first()
+                        is_new = producto is None
+                        
+                        if is_new:
+                            producto = Producto()
+                            producto.nombre = nombre 
+                            db.session.add(producto)
+                            imported_count += 1
+                        else:
+                            updated_count += 1
+
+                        # 3. Mapear y asignar los valores
+                        for csv_key, model_attr in field_mapping.items():
+                            if csv_key in row:
+                                value = row[csv_key]
+                                
+                                # Limpiar espacios
+                                if isinstance(value, str):
+                                    value = value.strip()
+                                
+                                # Conversión de tipos para 'cantidad'
+                                if model_attr == 'cantidad':
+                                    if not value: 
+                                        value = 0.0
+                                    try:
+                                        # ** IMPORTANTE **: Se asume que el separador decimal es el punto.
+                                        setattr(producto, model_attr, float(value))
+                                    except ValueError:
+                                        raise ValueError(f"'{value}' no es un número válido para el campo 'cantidad'. Asegúrese de usar un punto '.' como separador decimal.")
+                                # Asegurar que campos vacíos se guarden como None (para campos nullable)
+                                elif value == '':
+                                    setattr(producto, model_attr, None)
+                                else:
+                                    # Evitar que cadenas vacías se guarden si el campo es nullable y no es booleano
+                                    setattr(producto, model_attr, value if value else None)
+                                
+                        # Lógica para campo 'otra_ubicacion_actual'
+                        if producto.ubicacion_actual != 'otro':
+                             producto.otra_ubicacion_actual = None
+                        
+                    except ValueError as ve:
+                        # Error de conversión de tipo o lógica de negocio
+                        error_list.append(f"Fila {row_number} ('{nombre}'): Error de dato: {ve}")
+                        continue
+                    except IntegrityError as ie:
+                        db.session.rollback()
+                        error_list.append(f"Fila {row_number} ('{nombre}'): Error de base de datos (Integridad). Revise si el nombre es demasiado largo o si hay un campo duplicado (ej. nombre repetido).")
+                        # Sale del bucle en caso de IntegrityError para evitar más errores de estado de sesión.
+                        break 
+                    except Exception as e:
+                        # Otros errores
+                        error_list.append(f"Fila {row_number}: Error inesperado: {e}")
+                        continue
+                
+                # 4. Manejo de la transacción
+                if error_list:
+                    # El rollback en IntegrityError ya ocurrió, pero se repite por seguridad.
+                    db.session.rollback() 
+                    flash(f'Importación fallida. Se encontraron {len(error_list)} errores. Se revirtieron todos los cambios. Ver detalles abajo.', 'danger')
+                    return render_template('importar_inventario.html', errors=error_list)
+                else:
+                    # Si no hay errores, guardar todos los cambios
+                    db.session.commit()
+                    flash(f'Importación finalizada con éxito. {imported_count} productos creados, {updated_count} productos actualizados.', 'success')
+                    return redirect(url_for('inventario_completo'))
+
+            except Exception as e:
+                # Error de lectura de archivo o inicialización (ej. delimitador no detectado)
+                db.session.rollback() # Asegurar rollback en caso de error general
+                flash(f'Error fatal durante la lectura del archivo. Intenta guardar el archivo con otro delimitador (coma o punto y coma). Error técnico: {e}', 'danger')
+                return redirect(request.url)
+
+        else:
+            flash('Tipo de archivo no permitido. Por favor, sube un archivo CSV.', 'danger')
+    
+    # Renderizar la plantilla para la petición GET
+    return render_template('importar_inventario.html')
+# --- FIN DE LA RUTA DE IMPORTACIÓN CSV ---
+
 @app.route('/panel/ordenes')
+# ... (el resto del código de app.py continúa sin cambios)
 @login_required
 def admin_ordenes():
     page = request.args.get('page', 1, type=int)

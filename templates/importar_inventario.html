@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Importar Inventario - Panel{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">Importar Inventario desde CSV</h1>
+        
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Instrucciones de Importación</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>1. Formato de Archivo:</strong> El archivo debe estar en formato <strong>CSV</strong> (valores separados por comas) y con codificación <strong>UTF-8</strong>.</p>
+                <p><strong>2. Encabezados de Columna:</strong> La <strong>primera fila</strong> de tu archivo CSV debe contener los siguientes encabezados de columna. Los campos marcados con <strong>(*)</strong> son obligatorios y sus nombres deben coincidir **exactamente** con el texto en negrita:</p>
+                
+                <ul class="list-group mb-4">
+                    <li class="list-group-item"><strong>nombre (*)</strong>: Nombre único del producto.</li>
+                    <li class="list-group-item"><strong>cantidad (*)</strong>: Cantidad numérica (puede ser decimal).</li>
+                    <li class="list-group-item"><strong>unidad_medida (*)</strong>: Unidad (ej. "kg", "ml", "pieza").</li>
+                    <li class="list-group-item"><strong>ubicacion</strong>: Ubicación principal (Ej. BODEGA, ANAQUEL).</li>
+                    <li class="list-group-item"><strong>estante</strong>: Número o nombre del estante.</li>
+                    <li class="list-group-item"><strong>nombre_cana</strong>: Nombre CANA.</li>
+                    <li class="list-group-item"><strong>nombre_IUPAC</strong>: Nombre IUPAC.</li>
+                    <li class="list-group-item"><strong>formula_molecular</strong>: Fórmula Molecular.</li>
+                    <li class="list-group-item"><strong>cast_sigmg</strong>: CAST/SIGMG.</li>
+                    <li class="list-group-item"><strong>estado_fisico</strong>: Estado físico (Ej. "sólido", "líquido", "gas").</li>
+                    <li class="list-group-item"><strong>estado</strong>: Estado del envase (Ej. "ABIERTO", "SELLADO").</li>
+                    <li class="list-group-item"><strong>ubicacion_actual</strong>: Ubicación actual del envase.</li>
+                    <li class="list-group-item"><strong>otra_ubicacion_actual</strong>: Detalles si 'ubicacion_actual' es 'otro'.</li>
+                </ul>
+                
+                <p class="text-danger"><strong>IMPORTANTE:</strong> Si un producto ya existe con el mismo <strong>nombre</strong>, su información y cantidad serán <strong>actualizadas</strong> con los datos del CSV.</p>
+
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="form-group">
+                        <label for="archivo_csv">Seleccionar Archivo CSV:</label>
+                        <input type="file" class="form-control-file" id="archivo_csv" name="archivo_csv" accept=".csv" required>
+                    </div>
+                    <button type="submit" class="btn btn-success mt-3"><i class="fas fa-upload"></i> Subir e Importar</button>
+                    <a href="{{ url_for('inventario_completo') }}" class="btn btn-secondary mt-3">Cancelar</a>
+                </form>
+
+            </div>
+        </div>
+        
+        {% if errors %}
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-danger">
+                <h6 class="m-0 font-weight-bold text-white">Detalles de Errores de Importación</h6>
+            </div>
+            <div class="card-body">
+                <p class="text-danger">La importación falló debido a los siguientes problemas. Todos los cambios fueron revertidos:</p>
+                <ul class="list-unstyled">
+                    {% for error in errors %}
+                        <li class="text-danger">{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}

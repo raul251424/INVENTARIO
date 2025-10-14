@@ -5,9 +5,18 @@
 
 {% block content %}
 <div class="card">
-    <div class="card-header">
+    <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title mb-0">Inventario Completo</h3>
-        <a href="{{ url_for('gestionar_producto', t=timestamp) }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Añadir Productos</a>
+        <div>
+            <a href="{{ url_for('gestionar_producto', t=timestamp) }}" class="btn btn-primary btn-icon-split btn-sm">
+                <span class="icon text-white-50"><i class="fas fa-plus-circle"></i></span>
+                <span class="text">Añadir Productos</span>
+            </a>
+            <a href="{{ url_for('importar_inventario', t=timestamp) }}" class="btn btn-info btn-icon-split btn-sm">
+                <span class="icon text-white-50"><i class="fas fa-file-import"></i></span>
+                <span class="text">Importar CSV</span>
+            </a>
+        </div>
     </div>
     <div class="card-body">
         <form method="GET" action="{{ url_for('inventario_completo') }}" class="row g-3 align-items-center mb-4">
@@ -23,72 +32,73 @@
                     <option value="todos" {% if estado_fisico_filter == 'todos' %}selected{% endif %}>Estado Físico</option>
                     <option value="sólido" {% if estado_fisico_filter == 'sólido' %}selected{% endif %}>Sólido</option>
                     <option value="líquido" {% if estado_fisico_filter == 'líquido' %}selected{% endif %}>Líquido</option>
-                    <option value="gaseoso" {% if estado_fisico_filter == 'gaseoso' %}selected{% endif %}>Gaseoso</option>
+                    <option value="gas" {% if estado_fisico_filter == 'gas' %}selected{% endif %}>Gas</option>
                 </select>
             </div>
 
             <div class="col-md-2">
                 <select name="unidad_medida" class="form-select" onchange="this.form.submit()">
-                    <option value="todas" {% if unidad_medida_filter == 'todas' %}selected{% endif %}>Unidad de Medida</option>
-                    {% set unidades = ['gramos', 'kilogramos', 'miligramos', 'mililitros', 'litros', 'microlitros', 'moles', 'milimoles', 'unidades', 'paquetes'] %}
-                    {% for unidad in unidades %}
-                        <option value="{{ unidad }}" {% if unidad_medida_filter == unidad %}selected{% endif %}>{{ unidad.capitalize() }}</option>
-                    {% endfor %}
+                    <option value="todas" {% if unidad_medida_filter == 'todas' %}selected{% endif %}>Unidad Medida</option>
+                    <option value="kg" {% if unidad_medida_filter == 'kg' %}selected{% endif %}>kg</option>
+                    <option value="g" {% if unidad_medida_filter == 'g' %}selected{% endif %}>g</option>
+                    <option value="ml" {% if unidad_medida_filter == 'ml' %}selected{% endif %}>ml</option>
+                    <option value="L" {% if unidad_medida_filter == 'L' %}selected{% endif %}>L</option>
+                    <option value="pieza" {% if unidad_medida_filter == 'pieza' %}selected{% endif %}>Pieza</option>
+                    <option value="mol" {% if unidad_medida_filter == 'mol' %}selected{% endif %}>Mol</option>
+                </select>
+            </div>
+            
+            <div class="col-md-2">
+                <select name="estado_envase" class="form-select" onchange="this.form.submit()">
+                    <option value="todos" {% if estado_envase_filter == 'todos' %}selected{% endif %}>Estado Envase</option>
+                    <option value="ABIERTO" {% if estado_envase_filter == 'ABIERTO' %}selected{% endif %}>Abierto</option>
+                    <option value="SELLADO" {% if estado_envase_filter == 'SELLADO' %}selected{% endif %}>Sellado</option>
                 </select>
             </div>
 
             <div class="col-md-2">
-                <select name="estado_envase" class="form-select" onchange="this.form.submit()">
-                    <option value="todos" {% if estado_envase_filter == 'todos' %}selected{% endif %}>Estado Envase</option>
-                    <option value="cerrado" {% if estado_envase_filter == 'cerrado' %}selected{% endif %}>Cerrado</option>
-                    <option value="abierto" {% if estado_envase_filter == 'abierto' %}selected{% endif %}>Abierto</option>
-                    </select>
-            </div>
-
-            <div class="col-md-2 d-flex justify-content-end align-items-center">
-                <label for="per_page" class="form-label me-2 mb-0">Mostrar:</label>
-                <select name="per_page" class="form-select w-auto" onchange="this.form.submit()">
-                    <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
-                    <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
-                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                <select name="per_page" class="form-select" onchange="this.form.submit()">
+                    <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por página</option>
+                    <option value="25" {% if per_page == 25 %}selected{% endif %}>25 por página</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50 por página</option>
                 </select>
             </div>
-             {% if search_term or estado_fisico_filter != 'todos' or unidad_medida_filter != 'todas' or estado_envase_filter != 'todos' %}
-            <div class="col-12 text-center">
-                <a href="{{ url_for('inventario_completo') }}" class="btn btn-link text-secondary">Limpiar Filtros</a>
-            </div>
-            {% endif %}
         </form>
 
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-bordered table-hover">
                 <thead>
                     <tr>
                         <th>Nombre</th>
                         <th>Cantidad</th>
+                        <th>Unidad</th>
                         <th>Ubicación</th>
-                        <th>Estado Físico</th>
-                        <th>Estado Envase</th>
+                        <th>Estante</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for producto in productos %}
                     <tr id="producto-row-{{ producto.id }}">
-                        <td><strong>{{ producto.nombre }}</strong><br><small class="text-muted">{{ producto.formula_molecular or '' }}</small></td>
-                        <td>{{ producto.cantidad }} {{ producto.unidad_medida }}</td>
+                        <td>{{ producto.nombre }}</td>
+                        <td>{{ producto.cantidad | default(0) }}</td>
+                        <td>{{ producto.unidad_medida }}</td>
                         <td>
                             {% if producto.ubicacion_actual == 'otro' %}
-                                {{ producto.otra_ubicacion_actual or 'Otro (Sin Especificar)' }}
+                                {{ producto.otra_ubicacion_actual | default('N/A') }}
                             {% else %}
-                                {{ producto.ubicacion_actual }}
+                                {{ producto.ubicacion_actual | default('N/A') }}
                             {% endif %}
                         </td>
-                        <td>{{ (producto.estado_fisico or '') | capitalize }}</td>
-                        <td><span class="badge bg-secondary">{{ (producto.estado or '') | capitalize }}</span></td>
+                        <td>{{ producto.estante | default('N/A') }}</td>
                         <td>
                             <a href="{{ url_for('gestionar_producto', id=producto.id, t=timestamp) }}" class="btn btn-sm btn-outline-primary" title="Editar"><i class="bi bi-pencil"></i></a>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct({{ producto.id }})" title="Borrar"><i class="bi bi-trash"></i></button>
+                            
+                            <button class="btn btn-sm btn-outline-danger delete-btn" 
+                                    data-product-id="{{ producto.id }}" 
+                                    title="Borrar">
+                                <i class="bi bi-trash"></i>
+                            </button>
                         </td>
                     </tr>
                     {% else %}
@@ -102,29 +112,125 @@
 
 {{ render_pagination(pagination, 'inventario_completo') }}
 
+<div class="modal fade" id="deleteConfirmationModal" tabindex="-1" aria-labelledby="deleteConfirmationModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteConfirmationModalLabel">Confirmar Eliminación</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        ¿Estás seguro de que quieres eliminar este producto? Esta acción no se puede deshacer.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteButton">Eliminar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="messageModalLabel">Mensaje</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="messageModalBody">
+        </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-function deleteProduct(productId) {
-    if (!confirm('¿Estás seguro de que quieres eliminar este producto?')) return;
-    
-    const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    fetch(`/panel/producto/borrar/${productId}`, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': token }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const row = document.getElementById(`producto-row-${productId}`);
-            row.classList.add('fade-out');
-            setTimeout(() => row.remove(), 500);
-        } else {
-            alert('Error: ' + data.message);
+    let productIdToDelete = null;
+    const deleteModalElement = document.getElementById('deleteConfirmationModal');
+    const messageModalElement = document.getElementById('messageModal');
+
+    /**
+     * Muestra el modal de mensaje simple.
+     */
+    function showMessage(title, body) {
+        document.getElementById('messageModalLabel').textContent = title;
+        document.getElementById('messageModalBody').innerHTML = body;
+        const messageModal = new bootstrap.Modal(messageModalElement);
+        messageModal.show();
+    }
+
+    /**
+     * Ejecuta la solicitud de borrado.
+     */
+    async function deleteProduct() {
+        if (!productIdToDelete) return;
+
+        // Ocultar el modal de confirmación
+        const deleteModal = bootstrap.Modal.getInstance(deleteModalElement);
+        if (deleteModal) deleteModal.hide();
+        
+        try {
+            // Obtener el token CSRF
+            const tokenElement = document.querySelector('meta[name="csrf-token"]');
+            const token = tokenElement ? tokenElement.getAttribute('content') : '';
+
+            const response = await fetch(`/panel/producto/borrar/${productIdToDelete}`, {
+                method: 'POST',
+                headers: { 
+                    'X-CSRFToken': token,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                const row = document.getElementById(`producto-row-${productIdToDelete}`);
+                if (row) {
+                    // Animación de desaparición
+                    row.classList.add('table-danger'); // Marcar la fila
+                    row.style.transition = 'opacity 0.5s ease';
+                    row.style.opacity = '0';
+                    setTimeout(() => row.remove(), 500);
+                    showMessage('Éxito', 'El producto ha sido eliminado correctamente.');
+                } else {
+                     showMessage('Éxito', 'Producto eliminado, pero la fila no pudo ser actualizada en la tabla.');
+                }
+            } else {
+                showMessage('Error de Eliminación', `Ocurrió un error: ${data.message || 'Error desconocido'}`);
+            }
+        } catch(error) {
+            console.error('Error:', error);
+            showMessage('Error', 'Ocurrió un error en la comunicación con el servidor al intentar eliminar el producto.');
+        } finally {
+            productIdToDelete = null;
         }
-    })
-    .catch(error => console.error('Error:', error));
-}
+    }
+
+    // Listener para inicializar el borrado cuando se hace clic en cualquier botón de borrar
+    document.addEventListener('DOMContentLoaded', () => {
+        // 1. Asignar el evento a los botones de borrar
+        document.querySelectorAll('.delete-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                // Almacenar el ID del atributo de datos
+                productIdToDelete = this.getAttribute('data-product-id');
+                // Mostrar el modal
+                const deleteModal = new bootstrap.Modal(deleteModalElement);
+                deleteModal.show();
+            });
+        });
+
+        // 2. Asignar el evento al botón de confirmación del modal
+        const confirmButton = document.getElementById('confirmDeleteButton');
+        if (confirmButton) {
+            confirmButton.addEventListener('click', deleteProduct);
+        }
+    });
+
 </script>
 {% endblock %}
