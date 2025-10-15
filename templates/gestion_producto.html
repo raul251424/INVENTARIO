@@ -45,16 +45,16 @@
                         <div class="col-md-6">
                             <label for="estado_fisico" class="form-label">Estado Físico</label>
                             <select class="form-select" id="estado_fisico" name="estado_fisico">
-                                <option value="sólido" {% if producto and producto.estado_fisico == 'sólido' %}selected{% endif %}>Sólido</option>
-                                <option value="líquido" {% if producto and producto.estado_fisico == 'líquido' %}selected{% endif %}>Líquido</option>
-                                <option value="gaseoso" {% if producto and producto.estado_fisico == 'gaseoso' %}selected{% endif %}>Gaseoso</option>
+                                <option value="sólido" {% if producto and producto.estado_fisico|lower == 'sólido' %}selected{% endif %}>Sólido</option>
+                                <option value="líquido" {% if producto and producto.estado_fisico|lower == 'líquido' %}selected{% endif %}>Líquido</option>
+                                <option value="gaseoso" {% if producto and producto.estado_fisico|lower == 'gaseoso' %}selected{% endif %}>Gaseoso</option>
                             </select>
                         </div>
                         <div class="col-md-6">
                             <label for="estado" class="form-label">Estado del Envase</label>
                             <select class="form-select" id="estado" name="estado">
-                                <option value="cerrado" {% if producto and producto.estado == 'cerrado' %}selected{% endif %}>Cerrado (Sellado)</option>
-                                <option value="abierto" {% if producto and producto.estado == 'abierto' %}selected{% endif %}>Abierto (Usado)</option>
+                                <option value="cerrado" {% if producto and producto.estado|lower == 'cerrado' %}selected{% endif %}>Cerrado (Sellado)</option>
+                                <option value="abierto" {% if producto and producto.estado|lower == 'abierto' %}selected{% endif %}>Abierto (Usado)</option>
                             </select>
                         </div>
                     </div>
@@ -73,7 +73,7 @@
                             <select class="form-select" id="unidad_medida" name="unidad_medida">
                                 {% set unidades = ['gramos', 'kilogramos', 'miligramos', 'mililitros', 'litros', 'microlitros', 'moles', 'milimoles', 'unidades', 'paquetes'] %}
                                 {% for unidad in unidades %}
-                                <option value="{{ unidad }}" {% if producto and producto.unidad_medida == unidad %}selected{% endif %}>{{ unidad.capitalize() }}</option>
+                                <option value="{{ unidad }}" {% if producto and producto.unidad_medida|lower == unidad %}selected{% endif %}>{{ unidad.capitalize() }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -94,9 +94,9 @@
                     <div class="mb-3">
                         <label for="ubicacion_actual" class="form-label fw-bold">Laboratorio/Área</label>
                         <select class="form-select" id="ubicacion_actual" name="ubicacion_actual">
-                            <option value="lesqo" {% if producto and producto.ubicacion_actual == 'lesqo' %}selected{% endif %}>LESQO</option>
-                            <option value="loefba" {% if producto and producto.ubicacion_actual == 'loefba' %}selected{% endif %}>LOEFBA</option>
-                            <option value="otro" {% if producto and producto.ubicacion_actual == 'otro' %}selected{% endif %}>Otro</option>
+                            <option value="lesqo" {% if producto and producto.ubicacion_actual|lower == 'lesqo' %}selected{% endif %}>LESQO</option>
+                            <option value="loefba" {% if producto and producto.ubicacion_actual|lower == 'loefba' %}selected{% endif %}>LOEFBA</option>
+                            <option value="otro" {% if producto and producto.ubicacion_actual|lower == 'otro' %}selected{% endif %}>Otro</option>
                         </select>
                     </div>
                     

@@ -1,4 +1,4 @@
-# app.py (CÓDIGO FINAL CON OPTIMIZACIONES DE CARGA MASIVA Y MANEJO DE ERRORES)
+# app.py (CÓDIGO COMPLETO CON LA CORRECCIÓN DE PAGINACIÓN)
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify, session, Response
 from flask_sqlalchemy import SQLAlchemy
@@ -26,8 +26,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{getenv('DB_USER')}:{gete
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = getenv('SECRET_KEY', 'un-secreto-muy-fuerte-y-dificil-de-adivinar')
 app.config['TIMEZONE'] = 'America/Mexico_City'
-
-# La sesión expirará después de 15 minutos.
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
 
 # --- EXTENSIONES ---
@@ -57,7 +55,7 @@ def format_datetime_local(dt):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# --- MODELOS DE BASE DE DATOS (CON CAPACIDAD DE STRING AMPLIADA) ---
+# --- MODELOS DE BASE DE DATOS ---
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -76,9 +74,8 @@ class User(db.Model, UserMixin):
 class Producto(db.Model):
     __tablename__ = 'producto'
     id = db.Column(db.Integer, primary_key=True)
-    # Aumentados para evitar StringDataRightTruncation
     nombre = db.Column(db.String(500), nullable=False, unique=True, index=True) 
-    ubicacion = db.Column(db.String(255)) # Ubicación de Almacén (Área General)
+    ubicacion = db.Column(db.String(255))
     estante = db.Column(db.String(100))
     nombre_cana = db.Column(db.String(255))
     nombre_IUPAC = db.Column(db.String(500))
@@ -88,7 +85,7 @@ class Producto(db.Model):
     cantidad = db.Column(db.Float)
     unidad_medida = db.Column(db.String(100))
     estado = db.Column(db.String(100))
-    ubicacion_actual = db.Column(db.String(255)) # Ubicación Actual (Uso) - La que importa
+    ubicacion_actual = db.Column(db.String(255))
     otra_ubicacion_actual = db.Column(db.String(500), nullable=True)
     detalles_orden = db.relationship('DetalleOrden', backref='producto', lazy=True, cascade="all, delete-orphan")
 
@@ -123,24 +120,21 @@ class OrdenHistorial(db.Model):
     eliminado_por_rol = db.Column(db.String(50), nullable=False)
     eliminado_por_info = db.Column(db.String(200), nullable=False)
 
-# --- RUTAS DE AUTENTICACIÓN Y PRINCIPALES ---
+# --- RUTAS ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('admin_dashboard'))
-    
+        return redirect(url_for('admin_dashboard')) 
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
         user = User.query.filter_by(email=email).first()
-        
         if user and user.check_password(password):
             login_user(user)
             session.permanent = True
             return redirect(url_for('admin_dashboard'))
         else:
             flash('Correo electrónico o contraseña no válidos.', 'danger')
-            
     return render_template('login.html')
 
 @app.route('/logout', methods=['GET', 'POST'])
@@ -155,54 +149,77 @@ def logout():
 def dashboard_router():
     return redirect(url_for('admin_dashboard') if current_user.is_authenticated else url_for('login'))
 
-# --- RUTA DEL INVENTARIO CORREGIDA ---
+@app.route('/panel/dashboard')
+@login_required
+def admin_dashboard():
+    try:
+        total_productos = db.session.query(func.count(Producto.id)).scalar()
+        ordenes_abiertas = db.session.query(func.count(Orden.id)).filter(Orden.estado == 'ABIERTA').scalar()
+        productos_recientes = Producto.query.order_by(Producto.id.desc()).limit(5).all()
+        return render_template('admin_dashboard.html', total_productos=total_productos, ordenes_abiertas=ordenes_abiertas, productos_recientes=productos_recientes)
+    except Exception as e:
+        flash(f"No se pudo cargar la información del dashboard: {e}", "danger")
+        return render_template('admin_dashboard.html', total_productos='N/A', ordenes_abiertas='N/A', productos_recientes=[])
+
 @app.route('/panel/inventario')
 @login_required
 def inventario_completo():
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 10, type=int)
-    if per_page not in [10, 25, 50]: per_page = 10
+    # --- INICIO CORRECCIÓN DE VALIDACIÓN Y PAGINACIÓN ---
+    try:
+        # Recuperamos 'page' y lo forzamos a ser un entero, por defecto 1
+        page = int(request.args.get('page', 1))
+        # Recuperamos 'per_page' y lo forzamos a ser un entero, por defecto 10
+        per_page = int(request.args.get('per_page', 10))
+    except ValueError:
+        # Si el valor de 'page' o 'per_page' es inválido (ej. 'abc'), usamos los valores por defecto
+        page = 1
+        per_page = 10
+        
+    # Validamos que per_page esté en las opciones permitidas
+    if per_page not in [10, 25, 50]: 
+        per_page = 10
+    # Aseguramos que la página sea al menos 1
+    if page < 1:
+        page = 1
     
+    # Resto de filtros, que ya estaban correctos
     search_term = request.args.get('search', '', type=str)
-    # Corregido: Obtenemos los valores de filtro de la consulta
     estado_fisico_filter = request.args.get('estado_fisico', 'todos', type=str)
     unidad_medida_filter = request.args.get('unidad_medida', 'todas', type=str)
     estado_envase_filter = request.args.get('estado_envase', 'todos', type=str)
+    ubicacion_actual_filter = request.args.get('ubicacion_actual', 'todas', type=str) 
 
     query = Producto.query.order_by(Producto.nombre)
     
-    # Aplicar filtros
     if search_term:
         query = query.filter(Producto.nombre.ilike(f'%{search_term}%'))
-    
-    # CRÍTICO: Aseguramos que los valores coincidan con los datos de la DB
     if estado_fisico_filter != 'todos':
-        # El valor de la plantilla debe coincidir con el valor de la DB
         query = query.filter(func.upper(Producto.estado_fisico) == estado_fisico_filter.upper())
-    
     if unidad_medida_filter != 'todas':
         query = query.filter(func.upper(Producto.unidad_medida) == unidad_medida_filter.upper())
-    
     if estado_envase_filter != 'todos':
-        # CRÍTICO: El error era que 'SELLADO' no coincidía con 'sellado', usamos .upper()
         query = query.filter(func.upper(Producto.estado) == estado_envase_filter.upper()) 
+    if ubicacion_actual_filter != 'todas':
+        query = query.filter(func.upper(Producto.ubicacion_actual) == ubicacion_actual_filter.upper())
 
-    # Agrupamos los valores únicos para los dropdowns de filtrado en la plantilla
     estados_fisicos_unicos = db.session.query(Producto.estado_fisico).distinct().filter(Producto.estado_fisico != None).all()
-    estados_envase_unicos = db.session.query(Producto.estado).distinct().filter(Producto.estado != None).all()
+    unidades_medida_unicas = db.session.query(Producto.unidad_medida).distinct().filter(Producto.unidad_medida != None).all()
+    
+    estados_envase_posibles = ['abierto', 'cerrado']
+    ubicaciones_actuales_posibles = ['lesqo', 'loefba', 'otro']
 
+    # La paginación debe usar los valores limpios de page y per_page
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/inventario_completo.html',
-                           productos=pagination.items, pagination=pagination,
-                           search_term=search_term, per_page=per_page,
-                           estado_fisico_filter=estado_fisico_filter,
-                           unidad_medida_filter=unidad_medida_filter,
-                           estado_envase_filter=estado_envase_filter,
-                           # Pasamos los valores únicos a la plantilla
-                           estados_fisicos_unicos=[e[0] for e in estados_fisicos_unicos],
-                           estados_envase_unicos=[e[0] for e in estados_envase_unicos])
-# --- FIN DE LA RUTA DEL INVENTARIO CORREGIDA ---
+    # Si la página solicitada es mayor que el número total de páginas, redirigimos a la última página válida
+    if page > pagination.pages and pagination.pages > 0:
+         return redirect(url_for('inventario_completo', page=pagination.pages, **request.args))
+    elif page < 1:
+        return redirect(url_for('inventario_completo', page=1, **request.args))
+
+    return render_template('inventario_completo.html', productos=pagination.items, pagination=pagination, search_term=search_term, per_page=per_page, estado_fisico_filter=estado_fisico_filter, unidad_medida_filter=unidad_medida_filter, estado_envase_filter=estado_envase_filter, ubicacion_actual_filter=ubicacion_actual_filter, estados_fisicos_unicos=[e[0] for e in estados_fisicos_unicos], estados_envase_unicos=estados_envase_posibles, unidades_medida_unicas=[u[0] for u in unidades_medida_unicas], ubicaciones_actuales_unicas=ubicaciones_actuales_posibles)
+    # --- FIN CORRECCIÓN DE VALIDACIÓN Y PAGINACIÓN ---
+
 
 @app.route('/panel/ordenes')
 @login_required
@@ -217,15 +234,11 @@ def admin_ordenes():
     elif estado_filter == 'cerradas':
         query = query.filter(Orden.estado == 'CERRADA')
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/admin_ordenes.html',
-                           ordenes=pagination.items, pagination=pagination,
-                           per_page=per_page, estado_filter=estado_filter)
-
+    return render_template('admin_ordenes.html', ordenes=pagination.items, pagination=pagination, per_page=per_page, estado_filter=estado_filter)
 
 @app.route('/panel/orden/nueva', methods=['GET', 'POST'])
 @login_required
 def crear_orden():
-    # Solo listamos productos con cantidad > 0, excluyendo NULL si la columna es NOT NULL
     productos = Producto.query.filter(Producto.cantidad.isnot(None), Producto.cantidad > 0).order_by(Producto.nombre).all()
     if request.method == 'POST':
         try:
@@ -236,18 +249,17 @@ def crear_orden():
 
             if not all([solicitado_por, producto_id, cantidad]):
                 flash('Todos los campos son obligatorios.', 'danger')
-                return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/crear_orden.html', productos=productos)
+                return render_template('crear_orden.html', productos=productos)
             
             producto = db.session.get(Producto, producto_id)
             
             if not producto or producto.cantidad is None or producto.cantidad < cantidad:
-                flash(f'Stock insuficiente para el producto seleccionado. Cantidad disponible: {producto.cantidad if producto else 0}', 'danger')
-                return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/crear_orden.html', productos=productos)
+                flash(f'Stock insuficiente. Disponible: {producto.cantidad if producto else 0}', 'danger')
+                return render_template('crear_orden.html', productos=productos)
             
             nueva_orden = Orden(solicitado_por=solicitado_por, creado_por_id=current_user.id)
             detalle = DetalleOrden(orden=nueva_orden, producto_id=producto_id, cantidad_pedida=cantidad)
             
-            # Restar stock
             producto.cantidad -= cantidad
             
             db.session.add_all([nueva_orden, detalle])
@@ -260,9 +272,7 @@ def crear_orden():
         except Exception as e:
             db.session.rollback()
             flash(f'Error al crear la orden: {e}', 'danger')
-            
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/crear_orden.html', productos=productos)
-
+    return render_template('crear_orden.html', productos=productos)
 
 @app.route('/panel/producto/gestion/', methods=['GET', 'POST'])
 @app.route('/panel/producto/gestion/<int:id>', methods=['GET', 'POST'])
@@ -276,28 +286,24 @@ def gestionar_producto(id=None):
                 producto = Producto()
                 db.session.add(producto)
             
-            producto.nombre = request.form['nombre']
-            # El campo 'ubicacion' es la Ubicación de Almacén (Área General)
-            producto.ubicacion = request.form.get('ubicacion')
-            producto.estante = request.form.get('estante')
-            producto.nombre_cana = request.form.get('nombre_cana')
-            producto.nombre_IUPAC = request.form.get('nombre_IUPAC')
-            producto.formula_molecular = request.form.get('formula_molecular')
-            producto.cast_sigmg = request.form.get('cast_sigmg')
-            producto.estado_fisico = request.form.get('estado_fisico')
+            producto.nombre = request.form['nombre'].strip()
+            producto.ubicacion = request.form.get('ubicacion', '').strip()
+            producto.estante = request.form.get('estante', '').strip()
+            producto.nombre_cana = request.form.get('nombre_cana', '').strip()
+            producto.nombre_IUPAC = request.form.get('nombre_IUPAC', '').strip()
+            producto.formula_molecular = request.form.get('formula_molecular', '').strip()
+            producto.cast_sigmg = request.form.get('cast_sigmg', '').strip()
+            producto.estado_fisico = request.form.get('estado_fisico', '').strip().lower() 
             
-            # Asegura que float() se ejecuta con separador decimal punto o si está vacío es 0
             cantidad_str = request.form.get('cantidad', '0').replace(',', '.')
             producto.cantidad = float(cantidad_str)
             
-            producto.unidad_medida = request.form['unidad_medida']
-            producto.estado = request.form.get('estado')
-            
-            # ubicacion_actual es la Ubicación Actual (Uso) - Campo clave para el usuario
-            producto.ubicacion_actual = request.form['ubicacion_actual']
+            producto.unidad_medida = request.form['unidad_medida'].strip().lower()
+            producto.estado = request.form.get('estado', '').strip().lower() 
+            producto.ubicacion_actual = request.form['ubicacion_actual'].strip().lower()
             
             if producto.ubicacion_actual == 'otro':
-                producto.otra_ubicacion_actual = request.form.get('otra_ubicacion_actual')
+                producto.otra_ubicacion_actual = request.form.get('otra_ubicacion_actual', '').strip()
             else:
                 producto.otra_ubicacion_actual = None
 
@@ -307,8 +313,7 @@ def gestionar_producto(id=None):
         except Exception as e:
             db.session.rollback()
             flash(f'Error al guardar el producto: {e}', 'danger')
-            
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/gestion_producto.html', producto=producto)
+    return render_template('gestion_producto.html', producto=producto)
     
 @app.route('/panel/historial')
 @login_required
@@ -316,7 +321,7 @@ def admin_historial():
     if not current_user.es_admin: abort(403)
     page = request.args.get('page', 1, type=int)
     pagination = OrdenHistorial.query.order_by(OrdenHistorial.fecha_eliminacion.desc()).paginate(page=page, per_page=25, error_out=False)
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/admin_historial.html', historial=pagination.items, pagination=pagination)
+    return render_template('admin_historial.html', historial=pagination.items, pagination=pagination)
 
 @app.route('/panel/historial/borrar-seleccion', methods=['POST'])
 @login_required
@@ -417,7 +422,7 @@ def cerrar_orden(orden_id):
                     
                 if not (0 <= cantidad_devuelta <= detalle.cantidad_pedida):
                     flash(f'La cantidad devuelta para "{detalle.producto.nombre}" no es válida.', 'danger')
-                    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/admin_cerrar_orden.html', orden=orden)
+                    return render_template('admin_cerrar_orden.html', orden=orden)
                 
                 detalle.cantidad_devuelta = cantidad_devuelta
                 producto = db.session.get(Producto, detalle.producto_id)
@@ -436,74 +441,58 @@ def cerrar_orden(orden_id):
         except Exception as e:
             db.session.rollback()
             flash(f'Error al cerrar la orden: {e}', 'danger')
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/admin_cerrar_orden.html', orden=orden)
+    return render_template('admin_cerrar_orden.html', orden=orden)
 
-# --- RUTA DE IMPORTACIÓN CSV OPTIMIZADA (Final) ---
+# --- RUTA DE IMPORTACIÓN CSV CON CORRECCIÓN DE TRANSACCIÓN ---
 @app.route('/panel/inventario/importar', methods=['GET', 'POST'])
 @login_required
 def importar_inventario():
-    if not current_user.es_admin: 
+    db.session.close() # <-- LÍNEA DE ÚLTIMO RECURSO
+    if not current_user.es_admin:
         abort(403)
 
     if request.method == 'POST':
-        if 'archivo_csv' not in request.files:
+        if 'archivo_csv' not in request.files or request.files['archivo_csv'].filename == '':
             flash('No se seleccionó ningún archivo.', 'danger')
             return redirect(request.url)
-        
+
         file = request.files['archivo_csv']
-        if file.filename == '':
-            flash('No se seleccionó ningún archivo.', 'danger')
+        if not file.filename.lower().endswith('.csv'):
+            flash('Tipo de archivo no permitido. Sube un archivo CSV.', 'danger')
             return redirect(request.url)
 
-        if file and file.filename.lower().endswith('.csv'):
+        try:
+            file_content = file.stream.read().decode("utf-8")
+            file_content_clean = file_content.lstrip('\ufeff')
             
+            stream = StringIO(file_content_clean)
             try:
-                # 1. Lectura y limpieza del archivo (CRÍTICO para codificación y BOM)
-                # Lee todo el contenido y decodifica como UTF-8
-                file_content = file.stream.read().decode("utf-8")
-                # Elimina el BOM (Marca de Orden de Byte) que causa problemas de encabezado (CRÍTICO)
-                file_content_clean = file_content.lstrip('\ufeff')
-                stream = StringIO(file_content_clean)
-                
-                # 2. Detección de delimitador
-                try:
-                    # Sniff the delimiter using the first 1024 bytes
-                    dialect = csv.Sniffer().sniff(stream.read(1024), delimiters=',;\t')
-                    stream.seek(0)
-                    delimiter = dialect.delimiter if dialect.delimiter in [',', ';', '\t'] else ','
-                except csv.Error:
-                    stream.seek(0)
-                    delimiter = ',' # Usar coma por defecto si la detección falla
-                
+                dialect = csv.Sniffer().sniff(stream.read(1024), delimiters=',;\t')
+                stream.seek(0)
+                delimiter = dialect.delimiter
+            except csv.Error:
+                stream.seek(0)
+                delimiter = ','
+            
+            reader_for_validation = csv.DictReader(stream, delimiter=delimiter)
+            reader_for_validation.fieldnames = [name.strip().lower() for name in reader_for_validation.fieldnames]
+
+            required_fields = ['nombre', 'cantidad', 'unidad_medida']
+            if not all(field in reader_for_validation.fieldnames for field in required_fields):
+                missing = ", ".join([field for field in required_fields if field not in reader_for_validation.fieldnames])
+                raise ValueError(f"Faltan encabezados obligatorios en el archivo CSV: {missing}")
+
+            with db.session.begin():
+                existing_products_query = select(Producto.id, func.upper(Producto.nombre).label('nombre_upper'))
+                result = db.session.execute(existing_products_query).all()
+                existing_products_map = {row.nombre_upper: row.id for row in result}
+
+                stream.seek(0)
                 reader = csv.DictReader(stream, delimiter=delimiter)
-
-                required_fields = ['nombre', 'cantidad', 'unidad_medida'] 
+                reader.fieldnames = [name.strip().lower() for name in reader.fieldnames]
                 
-                # Normalizar los fieldnames del CSV (quita espacios y hace lowercase para mapeo)
-                csv_fieldnames_normalized = {name.strip().lower(): name for name in reader.fieldnames}
+                data_to_insert, data_to_update = [], []
                 
-                # 3. Validar que los campos mínimos existan
-                missing_headers = [
-                    field for field in required_fields 
-                    if field not in csv_fieldnames_normalized
-                ]
-                
-                # CRÍTICO: Buscar una coincidencia parcial para el campo 'nombre' en caso de error de tilde/espacio
-                if 'nombre' in missing_headers:
-                    nombre_found = False
-                    for key in csv_fieldnames_normalized.keys():
-                        if 'nombre' in key and len(key) < 10: # Si es 'nombre' o 'nombre_n'
-                            missing_headers.remove('nombre')
-                            nombre_found = True
-                            # Renombra la columna mal escrita a 'nombre' en el reader temporalmente
-                            # Esto es un workaround. Lo mejor es que el CSV esté limpio.
-                            reader.fieldnames[reader.fieldnames.index(csv_fieldnames_normalized['nombre'])] = 'nombre'
-                            break
-                    if not nombre_found:
-                        flash(f'Importación fallida. Faltan los encabezados obligatorios en el archivo CSV: {", ".join(missing_headers)}.', 'danger')
-                        return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/importar_inventario.html', errors=[f'Encabezados faltantes: {", ".join(missing_headers)}'])
-
-
                 field_mapping = {
                     'nombre': 'nombre', 'ubicacion': 'ubicacion', 'estante': 'estante',
                     'nombre_cana': 'nombre_cana', 'nombre_IUPAC': 'nombre_IUPAC',
@@ -513,122 +502,52 @@ def importar_inventario():
                     'ubicacion_actual': 'ubicacion_actual', 'otra_ubicacion_actual': 'otra_ubicacion_actual',
                 }
 
-                # 4. Obtención de productos existentes optimizada (usando UPPER para insensibilidad)
-                existing_products_query = select(Producto.id, func.upper(Producto.nombre).label('nombre_upper'))
-                result = db.session.execute(existing_products_query).all()
-                # Mapeo: {NOMBRE_EN_MAYUSCULAS: id}
-                existing_products_map = {row.nombre_upper: row.id for row in result}
+                for row_number, row in enumerate(reader, 2):
+                    nombre_raw = row.get('nombre', '').strip()
+                    if not nombre_raw:
+                        raise ValueError(f"Fila {row_number}: El campo 'nombre' no puede estar vacío.")
 
-                data_to_insert = []
-                data_to_update = []
-                error_list = []
-                row_number = 1 
-                
-                # 5. Procesamiento de filas CSV
-                for row in reader:
-                    row_number += 1
-                    nombre_raw = ""
-                    
-                    # Normalizar las claves de la fila actual (solo si se necesita acceso por clave)
-                    row_normalized = {k.strip().lower(): v for k, v in row.items() if k is not None}
-
-                    try:
-                        # Usar el nombre de columna limpio 'nombre'
-                        nombre_raw = row_normalized.get('nombre', '').strip()
-                        if not nombre_raw:
-                            error_list.append(f"Fila {row_number}: El campo 'nombre' es obligatorio y está vacío.")
-                            continue
-
-                        nombre_upper = nombre_raw.upper()
-                        
-                        processed_row: Dict[str, Any] = {}
-                        
-                        # Mapeo y validación de tipos por fila
-                        for csv_key, model_attr in field_mapping.items():
-                            csv_value = row_normalized.get(csv_key, '').strip()
-
-                            if model_attr == 'cantidad':
-                                if not csv_value: 
-                                    processed_row[db_col_name] = 0.0
-                                else:
-                                    # Permite coma como separador decimal
-                                    csv_value = csv_value.replace(',', '.') 
-                                    try:
-                                        processed_row[model_attr] = float(csv_value)
-                                    except ValueError:
-                                        raise ValueError(f"'{csv_value}' no es un número válido para '{model_attr}'.")
-                            
-                            elif not csv_value:
-                                processed_row[model_attr] = None
-                            
-                            else:
-                                processed_row[model_attr] = csv_value
-
-                        # Lógica para 'otra_ubicacion_actual' (debe ser None si ubicacion_actual no es 'otro')
-                        ubicacion_actual = processed_row.get('ubicacion_actual')
-                        if ubicacion_actual and ubicacion_actual.lower() != 'otro':
-                             processed_row['otra_ubicacion_actual'] = None
-                        
-                        # Asegurar que el nombre tenga su valor original (sin UPPER, pero limpio de espacios)
-                        processed_row['nombre'] = nombre_raw
-
-                        # 6. Segmentación para Bulk Operations
-                        existing_id = existing_products_map.get(nombre_upper)
-                        
-                        if existing_id:
-                            processed_row['id'] = existing_products_map[nombre_upper]
-                            data_to_update.append(processed_row)
+                    processed_row = {}
+                    for csv_key, model_attr in field_mapping.items():
+                        csv_value = row.get(csv_key, '').strip()
+                        if model_attr == 'cantidad':
+                            processed_row[model_attr] = float(csv_value.replace(',', '.')) if csv_value else 0.0
+                        elif model_attr in ['estado_fisico', 'unidad_medida', 'estado', 'ubicacion_actual']:
+                            processed_row[model_attr] = csv_value.lower() if csv_value else None
                         else:
-                            data_to_insert.append(processed_row)
-
-                    except ValueError as ve:
-                        error_list.append(f"Fila {row_number} ('{nombre_raw}'): Error de dato: {ve}")
-                        continue
-                    except Exception as e:
-                        error_list.append(f"Fila {row_number} ('{nombre_raw}'): Error inesperado al procesar. Contacte a soporte. Error: {e}")
-                        continue
-
-                # 7. Ejecución de Carga Masiva (Dentro de una única transacción)
-                imported_count = len(data_to_insert)
-                updated_count = len(data_to_update)
-                
-                if imported_count > 0 or updated_count > 0:
-                    try:
-                        with db.session.begin():
-                            db.session.bulk_update_mappings(Producto, data_to_update)
-                            db.session.bulk_insert_mappings(Producto, data_to_insert)
-                        
-                        if error_list:
-                            flash(f'Importación completada con {imported_count} creados, {updated_count} actualizados, pero con {len(error_list)} errores. Las filas correctas se guardaron. Ver detalles abajo.', 'warning')
-                            return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/importar_inventario.html', errors=error_list)
-                        else:
-                            flash(f'Importación finalizada con éxito. {imported_count} productos creados, {updated_count} productos actualizados.', 'success')
-                            return redirect(url_for('inventario_completo'))
+                            processed_row[model_attr] = csv_value if csv_value else None
                     
-                    except SQLAlchemyError as sqla_e:
-                        db.session.rollback()
-                        error_message = str(sqla_e.orig) if hasattr(sqla_e, 'orig') and sqla_e.orig else str(sqla_e)
-                        flash(f'Error fatal de la base de datos durante la carga. Revise que los datos no sean demasiado largos. Error: {error_message}', 'danger')
-                        return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/importar_inventario.html', errors=[f'Error de Base de Datos: {error_message}'])
+                    if processed_row.get('ubicacion_actual') != 'otro':
+                        processed_row['otra_ubicacion_actual'] = None
                     
-                else:
-                    if error_list:
-                        flash(f'Importación fallida. Se encontraron {len(error_list)} errores. Ninguna fila fue procesada. Ver detalles abajo.', 'danger')
-                        return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/importar_inventario.html', errors=error_list)
+                    processed_row['nombre'] = nombre_raw
+                    nombre_upper = nombre_raw.upper()
+                    
+                    if nombre_upper in (p['nombre'].upper() for p in data_to_insert):
+                        raise ValueError(f"Fila {row_number}: Nombre de producto '{nombre_raw}' duplicado dentro del mismo archivo CSV.")
+
+                    if nombre_upper in existing_products_map:
+                        processed_row['id'] = existing_products_map[nombre_upper]
+                        data_to_update.append(processed_row)
                     else:
-                        flash('El archivo CSV está vacío o no contiene datos válidos.', 'info')
-                        return redirect(request.url)
+                        data_to_insert.append(processed_row)
+                
+                if not data_to_insert and not data_to_update:
+                    raise ValueError("El archivo CSV está vacío o no contiene datos válidos para procesar.")
 
+                if data_to_update:
+                    db.session.bulk_update_mappings(Producto, data_to_update)
+                if data_to_insert:
+                    db.session.bulk_insert_mappings(Producto, data_to_insert)
 
-            except Exception as e:
-                flash(f'Error fatal durante la lectura del archivo. Asegúrate de que el archivo es un CSV válido y codificado en UTF-8. Error técnico: {e}', 'danger')
-                return redirect(request.url)
+            flash(f'Importación exitosa. {len(data_to_insert)} productos creados, {len(data_to_update)} actualizados.', 'success')
+            return redirect(url_for('inventario_completo'))
 
-        else:
-            flash('Tipo de archivo no permitido. Por favor, sube un archivo CSV.', 'danger')
-    
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/importar_inventario.html')
-# --- FIN DE LA RUTA DE IMPORTACIÓN CSV OPTIMIZADA ---
+        except (SQLAlchemyError, ValueError, csv.Error, Exception) as e:
+            flash(f'Importación fallida. Todos los cambios fueron revertidos. Error: {e}', 'danger')
+            return render_template('importar_inventario.html', errors=[f"Error: {e}"])
+
+    return render_template('importar_inventario.html')
 
 
 # --- RUTAS DE GESTIÓN DE USUARIOS (SOLO ADMINS) ---
@@ -638,7 +557,7 @@ def admin_usuarios():
     if not current_user.es_admin: abort(403)
     page = request.args.get('page', 1, type=int)
     pagination = User.query.filter(User.id != current_user.id).order_by(User.nombre).paginate(page=page, per_page=10, error_out=False)
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/admin_usuarios.html', users=pagination.items, pagination=pagination)
+    return render_template('admin_usuarios.html', users=pagination.items, pagination=pagination)
 
 @app.route('/panel/usuario/gestion', methods=['GET', 'POST'])
 @app.route('/panel/usuario/gestion/<int:id>', methods=['GET', 'POST'])
@@ -655,12 +574,12 @@ def gestionar_usuario(id=None):
         existing_user = User.query.filter(User.email == email).first()
         if existing_user and (user is None or existing_user.id != user.id):
             flash('El correo electrónico ya está en uso por otro usuario.', 'danger')
-            return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/gestion_usuario.html', user=user)
+            return render_template('gestion_usuario.html', user=user)
 
         if user is None:
             if not password:
                 flash('La contraseña es obligatoria para los nuevos usuarios.', 'danger')
-                return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/gestion_usuario.html', user=user)
+                return render_template('gestion_usuario.html', user=user)
             new_user = User(nombre=nombre, email=email, es_admin=(rol == 'admin'))
             new_user.set_password(password)
             db.session.add(new_user)
@@ -676,7 +595,7 @@ def gestionar_usuario(id=None):
         db.session.commit()
         return redirect(url_for('admin_usuarios'))
 
-    return render_template('raul251424/inventario/INVENTARIO-dc224ceb0ecd648820bff3b5df3abfa6eedcc9de/templates/gestion_usuario.html', user=user)
+    return render_template('gestion_usuario.html', user=user)
 
 @app.route('/panel/usuario/borrar/<int:id>', methods=['POST'])
 @login_required

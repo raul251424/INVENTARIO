@@ -1,7 +1,0 @@
-﻿nombre,ubicacion,estante,nombre_cana,nombre_IUPAC,formula_molecular,cast_sigmg,estado_fisico,cantidad,unidad_medida,estado,ubicacion_actual,otra_ubicacion_actual
-Acido SulfÃºrico 98%,BODEGA,A-101,Acido de hidrogeno,Acido sulfÃºrico,H2SO4,7664-93-9,liquido,500,ml,SELLADO,BODEGA,
-Metanol Puro,LABORATORIO,B-205,Alcohol metÃ­lico,Metanol,CH3OH,67-56-1,liquido,1.5,L,ABIERTO,LABORATORIO,
-Acetona Grado AnalÃ­tico,LABORATORIO,D-302,Propanona,Propanona,C3H6O,67-64-1,liquido,0.75,L,ABIERTO,otro,Gabinete de Inflamables
-HidrÃ³xido de Sodio,ALMACÃ‰N,E-404,Soda cÃ¡ustica,HidrÃ³xido de sodio,NaOH,1310-73-2,solido,2,kg,SELLADO,ALMACÃ‰N,
-Cloroformo,LABORATORIO,F-10,Triclorometano,Cloroformo,CHCl3,67-66-3,liquido,250,ml,SELLADO,LABORATORIO,
-AmonÃ­aco 28%,LABORATORIO,G-15,Amoniaco acuoso,HidrÃ³xido de amonio,NH4OH,1336-21-6,liquido,10,L,ABIERTO,otro,Nevera de Reactivos
