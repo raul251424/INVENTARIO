@@ -1,4 +1,4 @@
-# app.py (CÓDIGO COMPLETO Y CORREGIDO con Encabezados de Seguridad)
+# app.py (CÓDIGO COMPLETO, CORREGIDO Y FINAL)
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify, session, Response
 from flask_sqlalchemy import SQLAlchemy
@@ -22,12 +22,23 @@ from flask_migrate import Migrate
 load_dotenv()
 app = Flask(__name__)
 
+# --- SOLUCIÓN AL ERROR 'TemplateSyntaxError: Encountered unknown tag 'do'' ---
+# Habilita la extensión 'do' para que Jinja2 reconozca la etiqueta {% do %} en las plantillas.
+app.jinja_env.add_extension('jinja2.ext.do')
+# -------------------------------------------------------------------------------
+
 # Configuración de la base de datos y clave secreta
 app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{getenv('DB_USER')}:{getenv('DB_PASSWORD')}@{getenv('DB_HOST')}:{getenv('DB_PORT', '5432')}/{getenv('DB_NAME')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = getenv('SECRET_KEY', 'un-secreto-muy-fuerte-y-dificil-de-adivinar')
 app.config['TIMEZONE'] = 'America/Mexico_City'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
+
+# --- MEJORAS DE SEGURIDAD: Cookies de Sesión ---
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# -----------------------------------------------
 
 # --- EXTENSIONES ---
 db = SQLAlchemy(app)
@@ -55,7 +66,6 @@ def format_datetime_local(dt):
 
 @app.template_filter('abreviar_unidad')
 def abreviar_unidad_filter(unidad):
-    """Convierte el nombre completo de la unidad a su abreviatura estandarizada."""
     unidad = str(unidad).lower().strip()
     mapa = {
         'gramos': 'g', 'kilogramos': 'kg', 'miligramos': 'mg',
@@ -103,6 +113,7 @@ class Producto(db.Model):
     estado = db.Column(db.String(100), index=True)
     ubicacion_actual = db.Column(db.String(255), index=True)
     otra_ubicacion_actual = db.Column(db.String(500), nullable=True)
+    stock_minimo = db.Column(db.Float, default=0) 
     detalles_orden = db.relationship('DetalleOrden', backref='producto', lazy=True, cascade="all, delete-orphan")
 
 class Orden(db.Model):
@@ -167,13 +178,36 @@ def dashboard_router():
 @login_required
 def admin_dashboard():
     try:
+        # --- CORRECCIÓN: Limpia los mensajes flash de stock bajo al cargar el dashboard ---
+        # Esto evita que la alerta persista si el usuario la cierra y navega.
+        if '_flashes' in session:
+            session['_flashes'] = [f for f in session['_flashes'] if 'Stock bajo' not in f[1]]
+            if not session['_flashes']:
+                session.pop('_flashes', None)
+        # ---------------------------------------------------------------------------------
+
         total_productos = db.session.query(func.count(Producto.id)).scalar()
         ordenes_abiertas = db.session.query(func.count(Orden.id)).filter(Orden.estado == 'ABIERTA').scalar()
         productos_recientes = Producto.query.order_by(Producto.id.desc()).limit(5).all()
-        return render_template('admin_dashboard.html', total_productos=total_productos, ordenes_abiertas=ordenes_abiertas, productos_recientes=productos_recientes)
+        
+        productos_stock_bajo = Producto.query.filter(
+            Producto.cantidad.isnot(None),
+            Producto.stock_minimo.isnot(None),
+            Producto.stock_minimo > 0,
+            Producto.cantidad <= Producto.stock_minimo 
+        ).order_by(Producto.nombre).all()
+
+        return render_template(
+            'admin_dashboard.html', 
+            total_productos=total_productos, 
+            ordenes_abiertas=ordenes_abiertas, 
+            productos_recientes=productos_recientes,
+            productos_stock_bajo=productos_stock_bajo
+        )
     except Exception as e:
-        flash(f"No se pudo cargar la información del dashboard: {e}", "danger")
-        return render_template('admin_dashboard.html', total_productos='N/A', ordenes_abiertas='N/A', productos_recientes=[])
+        app.logger.error(f"Error al cargar el dashboard: {e}")
+        flash('Ocurrió un error inesperado al cargar la información del panel.', "danger")
+        return render_template('admin_dashboard.html', total_productos='N/A', ordenes_abiertas='N/A', productos_recientes=[], productos_stock_bajo=[])
 
 @app.route('/panel/inventario')
 @login_required
@@ -187,6 +221,7 @@ def inventario_completo():
     if per_page not in [10, 25, 50]: per_page = 10
     if page < 1: page = 1
     
+    # Captura de todos los parámetros de filtrado
     search_term = request.args.get('search', '', type=str)
     estado_fisico_filter = request.args.get('estado_fisico', 'todos', type=str)
     unidad_medida_filter = request.args.get('unidad_medida', 'todas', type=str)
@@ -206,9 +241,15 @@ def inventario_completo():
     if ubicacion_actual_filter != 'todas':
         query = query.filter(func.upper(Producto.ubicacion_actual) == ubicacion_actual_filter.upper())
 
-    estados_fisicos_unicos_raw = db.session.query(Producto.estado_fisico).distinct().filter(Producto.estado_fisico != None).all()
-    estados_fisicos_unicos = sorted([e[0] for e in estados_fisicos_unicos_raw])
+    # Lógica para el filtro de estado físico (sin 'gas', solo DB + base)
+    estados_fisicos_unicos_db_raw = db.session.query(Producto.estado_fisico).distinct().filter(Producto.estado_fisico != None).all()
+    estados_fisicos_db = {e[0].lower() for e in estados_fisicos_unicos_db_raw}
+    # CAMBIO: Lista base sin 'gas'
+    estados_fisicos_base = {'líquido', 'sólido'}
     
+    estados_fisicos_unicos = sorted(list(estados_fisicos_base.union(estados_fisicos_db)))
+    # -------------------------------------------------------------------------
+
     unidades_medida_unicas_raw = db.session.query(Producto.unidad_medida).distinct().filter(Producto.unidad_medida != None).all()
     unidades_medida_unicas = sorted([u[0] for u in unidades_medida_unicas_raw])
     
@@ -219,14 +260,91 @@ def inventario_completo():
     
     if page > pagination.pages and pagination.pages > 0:
          return redirect(url_for('inventario_completo', page=pagination.pages, **request.args))
+    
+    productos_procesados = []
+    # --- NUEVA CARACTERÍSTICA: Numeración de Filas ---
+    start_index = (pagination.page - 1) * pagination.per_page
+    
+    for index, producto in enumerate(pagination.items):
+        # Asignar el número de fila al objeto producto
+        producto.row_number = start_index + index + 1
+        # --- FIN NUEVA CARACTERÍSTICA ---
+        
+        if producto.cantidad is None:
+            producto.cantidad = 0.0
+        if producto.stock_minimo is None:
+            producto.stock_minimo = 0.0
+        productos_procesados.append(producto)
 
     return render_template('inventario_completo.html', 
-        productos=pagination.items, pagination=pagination, search_term=search_term, 
-        per_page=per_page, estado_fisico_filter=estado_fisico_filter, 
-        unidad_medida_filter=unidad_medida_filter, estado_envase_filter=estado_envase_filter, 
-        ubicacion_actual_filter=ubicacion_actual_filter, estados_fisicos_unicos=estados_fisicos_unicos, 
-        estados_envase_unicos=estados_envase_posibles, unidades_medida_unicas=unidades_medida_unicas, 
-        ubicaciones_actuales_unicas=ubicaciones_actuales_posibles
+        productos=productos_procesados,
+        pagination=pagination, 
+        search_term=search_term, 
+        per_page=per_page, 
+        estado_fisico_filter=estado_fisico_filter, 
+        unidad_medida_filter=unidad_medida_filter, 
+        estado_envase_filter=estado_envase_filter, 
+        ubicacion_actual_filter=ubicacion_actual_filter, 
+        estados_fisicos_unicos=estados_fisicos_unicos, 
+        estados_envase_unicos=estados_envase_posibles, 
+        unidades_medida_unicas=unidades_medida_unicas, 
+        ubicaciones_actuales_posibles=ubicaciones_actuales_posibles
+    )
+
+@app.route('/panel/inventario/exportar-csv')
+@login_required
+def exportar_inventario_csv():
+    search_term = request.args.get('search', '', type=str)
+    estado_fisico_filter = request.args.get('estado_fisico', 'todos', type=str)
+    unidad_medida_filter = request.args.get('unidad_medida', 'todas', type=str)
+    estado_envase_filter = request.args.get('estado_envase', 'todos', type=str)
+    ubicacion_actual_filter = request.args.get('ubicacion_actual', 'todas', type=str) 
+
+    query = Producto.query.order_by(Producto.nombre)
+    
+    if search_term:
+        query = query.filter(Producto.nombre.ilike(f'%{search_term}%'))
+    if estado_fisico_filter != 'todos':
+        query = query.filter(func.upper(Producto.estado_fisico) == estado_fisico_filter.upper())
+    if unidad_medida_filter != 'todas':
+        query = query.filter(func.upper(Producto.unidad_medida) == unidad_medida_filter.upper())
+    if estado_envase_filter != 'todos':
+        query = query.filter(func.upper(Producto.estado) == estado_envase_filter.upper()) 
+    if ubicacion_actual_filter != 'todas':
+        query = query.filter(func.upper(Producto.ubicacion_actual) == ubicacion_actual_filter.upper())
+
+    productos_a_exportar = query.all()
+    
+    si = StringIO()
+    cw = csv.writer(si)
+
+    headers = [
+        "ID", "Nombre", "Formula Molecular", "Nombre IUPAC", "Nombre Comun (Cana)", 
+        "CAS / SIGMG", "Estado Fisico", "Cantidad", "Unidad de Medida", 
+        "Stock Minimo", "Estado Envase", "Ubicacion Almacen", "Estante", 
+        "Ubicacion Actual (Uso)", "Detalle Ubicacion (Otro)"
+    ]
+    cw.writerow(headers)
+
+    for p in productos_a_exportar:
+        row = [
+            p.id, p.nombre, p.formula_molecular, p.nombre_IUPAC, p.nombre_cana,
+            p.cast_sigmg, p.estado_fisico, p.cantidad, p.unidad_medida, 
+            p.stock_minimo, p.estado, p.ubicacion, p.estante, p.ubicacion_actual, 
+            p.otra_ubicacion_actual
+        ]
+        cw.writerow([str(item) if item is not None else '' for item in row])
+
+    output = si.getvalue()
+    fecha_exportacion = datetime.now(pytz.timezone(app.config.get('TIMEZONE', 'UTC'))).strftime('%Y%m%d_%H%M')
+    
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment;filename=inventario_exportado_{fecha_exportacion}.csv",
+            "Content-type": "text/csv; charset=utf-8"
+        }
     )
 
 @app.route('/panel/ordenes')
@@ -282,10 +400,12 @@ def crear_orden():
             return redirect(url_for('admin_ordenes'))
         
         except (ValueError, TypeError) as e:
-            flash(f'Por favor, introduce valores válidos. Error: {e}', 'danger')
+            flash('Por favor, introduce valores válidos.', 'danger')
+            app.logger.error(f"Error de valor/tipo al crear orden: {e}")
         except Exception as e:
             db.session.rollback()
-            flash(f'Error al crear la orden: {e}', 'danger')
+            flash('Ocurrió un error inesperado al crear la orden.', 'danger')
+            app.logger.error(f"Error al crear la orden: {e}")
     return render_template('crear_orden.html', productos=productos)
 
 @app.route('/panel/producto/gestion/', methods=['GET', 'POST'])
@@ -293,6 +413,10 @@ def crear_orden():
 @login_required
 def gestionar_producto(id=None):
     producto = db.session.get(Producto, id) if id else None
+    
+    # Capturar el parámetro 'next' de la URL para redirigir después de guardar
+    next_url = request.args.get('next', url_for('inventario_completo'))
+
     if request.method == 'POST':
         try:
             is_new = producto is None
@@ -312,6 +436,9 @@ def gestionar_producto(id=None):
             cantidad_str = request.form.get('cantidad', '0').replace(',', '.')
             producto.cantidad = float(cantidad_str)
             
+            stock_minimo_str = request.form.get('stock_minimo', '0').replace(',', '.')
+            producto.stock_minimo = float(stock_minimo_str)
+
             producto.unidad_medida = request.form['unidad_medida'].strip().lower()
             producto.estado = request.form.get('estado', '').strip().lower() 
             producto.ubicacion_actual = request.form['ubicacion_actual'].strip().lower()
@@ -323,11 +450,17 @@ def gestionar_producto(id=None):
 
             db.session.commit()
             flash('Producto guardado con éxito.', 'success')
-            return redirect(url_for('inventario_completo'))
+            
+            # --- Persistencia del Filtro: Redirige usando el valor 'next' ---
+            return redirect(request.form.get('next') or url_for('inventario_completo'))
+            
         except Exception as e:
             db.session.rollback()
-            flash(f'Error al guardar el producto: {e}', 'danger')
-    return render_template('gestion_producto.html', producto=producto)
+            flash('Ocurrió un error inesperado al guardar el producto.', 'danger')
+            app.logger.error(f"Error al guardar el producto: {e}")
+            
+    # Asegúrate de pasar 'next_url' a la plantilla en el método GET
+    return render_template('gestion_producto.html', producto=producto, next_url=next_url)
     
 @app.route('/panel/historial')
 @login_required
@@ -352,7 +485,8 @@ def admin_borrar_historial_seleccion():
         flash(f'Se eliminaron {len(historial_ids)} registros del historial.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error al eliminar registros: {e}', 'danger')
+        flash('Ocurrió un error inesperado al eliminar registros.', 'danger')
+        app.logger.error(f"Error al eliminar registros: {e}")
     
     return redirect(url_for('admin_historial'))
 
@@ -366,7 +500,8 @@ def admin_borrar_historial_todo():
         flash(f'¡ADVERTENCIA! Se eliminaron {num_deleted} registros. El historial está vacío.', 'danger')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error al borrar todo el historial: {e}', 'danger')
+        flash('Ocurrió un error inesperado al borrar todo el historial.', 'danger')
+        app.logger.error(f"Error al borrar todo el historial: {e}")
     
     return redirect(url_for('admin_historial'))
 
@@ -399,7 +534,8 @@ def admin_borrar_orden_historial(orden_id):
         flash(f'La orden #{orden.id} ha sido movida al historial.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error al mover la orden: {e}', 'danger')
+        flash('Ocurrió un error inesperado al mover la orden al historial.', 'danger')
+        app.logger.error(f"Error al mover la orden: {e}")
     return redirect(url_for('admin_ordenes'))
 
 @app.route('/panel/producto/borrar/<int:id>', methods=['POST'])
@@ -417,7 +553,7 @@ def admin_borrar_producto(id):
         return jsonify({'success': False, 'message': 'Error: El producto está en uso en una orden.'}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'message': f'Error inesperado: {e}'}), 500
+        return jsonify({'success': False, 'message': 'Ocurrió un error inesperado.'}), 500
 
 @app.route('/panel/producto/borrar-seleccion', methods=['POST'])
 @login_required
@@ -429,6 +565,7 @@ def admin_borrar_productos_seleccion():
         return redirect(url_for('inventario_completo'))
 
     try:
+        # Aquí se realiza el borrado de los productos seleccionados
         num_deleted = db.session.query(Producto).filter(Producto.id.in_(producto_ids)).delete(synchronize_session=False)
         db.session.commit()
         flash(f'Se eliminaron {num_deleted} productos seleccionados.', 'success')
@@ -437,10 +574,12 @@ def admin_borrar_productos_seleccion():
         flash('Error: No se pudieron eliminar algunos productos porque están en uso en órdenes.', 'danger')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error al eliminar productos: {e}', 'danger')
+        flash('Ocurrió un error inesperado al eliminar productos.', 'danger')
+        app.logger.error(f"Error al eliminar productos: {e}")
     
     return redirect(url_for('inventario_completo'))
 
+# --- RUTA 'BORRAR TODO' RESTAURADA ---
 @app.route('/panel/producto/borrar-todo', methods=['POST'])
 @login_required
 def admin_borrar_productos_todo():
@@ -454,9 +593,11 @@ def admin_borrar_productos_todo():
         flash('Error: No se pueden eliminar todos los productos porque algunos están en uso en órdenes.', 'danger')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error al borrar todo el inventario: {e}', 'danger')
+        flash('Ocurrió un error inesperado al borrar todo el inventario.', 'danger')
+        app.logger.error(f"Error al borrar todo el inventario: {e}")
     
     return redirect(url_for('inventario_completo'))
+# -----------------------------------------------
 
 @app.route('/panel/orden/cerrar/<int:orden_id>', methods=['GET', 'POST'])
 @login_required
@@ -493,96 +634,137 @@ def cerrar_orden(orden_id):
             flash('Por favor, introduce valores numéricos válidos.', 'danger')
         except Exception as e:
             db.session.rollback()
-            flash(f'Error al cerrar la orden: {e}', 'danger')
+            flash('Ocurrió un error inesperado al cerrar la orden.', 'danger')
+            app.logger.error(f"Error al cerrar la orden: {e}")
     return render_template('admin_cerrar_orden.html', orden=orden)
 
-@app.route('/panel/inventario/importar', methods=['GET', 'POST'])
+# app.py - Función Corregida: _update_product_from_row()
+
+def _update_product_from_row(producto: Producto, row: Dict[str, Any]):
+    """
+    Función auxiliar para actualizar un objeto Producto desde una fila de CSV.
+    Incluye manejo de errores robusto para la conversión a float.
+    """
+    errors = []
+    
+    for field, value in row.items():
+        field = field.strip().lower()
+        
+        # Asegura que value no sea None y se convierta a string vacío si lo es
+        str_value = str(value).strip() if value is not None else '' 
+        
+        if hasattr(producto, field) and str_value != '':
+            if field in ['cantidad', 'stock_minimo']:
+                # Manejo de errores de conversión a float: ignora el error y usa 0.0
+                try:
+                    # Reemplaza comas por puntos antes de la conversión a float
+                    numeric_value = str_value.replace(',', '.')
+                    setattr(producto, field, float(numeric_value))
+                except ValueError:
+                    # Si falla la conversión (porque encontró texto), usa 0.0 y registra el error.
+                    setattr(producto, field, 0.0)
+                    errors.append(f"El campo '{field}' esperaba un número, pero se encontró '{str_value}'. Se estableció en 0.")
+            else:
+                setattr(producto, field, str_value) 
+    
+    if errors:
+        # Lanza ValueError para que el bloque try/except en importar_inventario
+        # pueda capturar estos errores específicos de campo.
+        raise ValueError("; ".join(errors))
+
+
+@app.route('/importar', methods=['GET', 'POST']) 
 @login_required
 def importar_inventario():
-    if not current_user.es_admin: abort(403)
-
     if request.method == 'POST':
-        if 'archivo_csv' not in request.files or not request.files['archivo_csv'].filename:
-            flash('No se seleccionó ningún archivo.', 'danger')
+        if 'archivo_csv' not in request.files:
+            flash('No se encontró el archivo en la solicitud.', 'danger')
             return redirect(request.url)
 
         file = request.files['archivo_csv']
-        if not file.filename.lower().endswith('.csv'):
-            flash('Tipo de archivo no permitido. Sube un archivo CSV.', 'danger')
+        if file.filename == '' or not file.filename.lower().endswith('.csv'):
+            flash('No se seleccionó ningún archivo o el formato no es .csv.', 'warning')
             return redirect(request.url)
 
+        errors = []
         try:
-            file_content = file.stream.read().decode("utf-8-sig")
-            stream = StringIO(file_content)
-            
+            content = file.stream.read().decode('utf-8-sig')
+            stream = StringIO(content)
+
             try:
-                dialect = csv.Sniffer().sniff(stream.read(2048), delimiters=',;\t')
+                dialect = csv.Sniffer().sniff(stream.read(2048))
                 stream.seek(0)
             except csv.Error:
                 stream.seek(0)
-                dialect = csv.excel
+                dialect = 'excel'
             
-            reader_for_validation = csv.DictReader(stream, dialect=dialect)
-            reader_for_validation.fieldnames = [name.strip().lower() for name in reader_for_validation.fieldnames or []]
-
-            required_fields = ['nombre', 'cantidad', 'unidad_medida']
-            if not all(field in reader_for_validation.fieldnames for field in required_fields):
-                missing = ", ".join([field for field in required_fields if field not in reader_for_validation.fieldnames])
-                raise ValueError(f"Faltan encabezados obligatorios: {missing}")
+            csv_reader = csv.DictReader(stream, dialect=dialect)
             
-            stream.seek(0) 
-            reader = csv.DictReader(stream, dialect=dialect)
-            reader.fieldnames = [name.strip().lower() for name in reader.fieldnames]
+            # Normaliza los nombres de las columnas a minúsculas y sin espacios
+            if csv_reader.fieldnames:
+                normalized_fieldnames = {}
+                for name in csv_reader.fieldnames:
+                    if name is not None:
+                         normalized_fieldnames[name] = name.strip().lower()
 
-            with db.session.begin():
-                existing_products_map = {p.nombre.upper(): p.id for p in Producto.query.all()}
-                
-                data_to_insert, data_to_update = [], []
-                
-                for row_number, row in enumerate(reader, 2):
-                    nombre_raw = row.get('nombre', '').strip()
-                    if not nombre_raw:
-                        raise ValueError(f"Fila {row_number}: El 'nombre' no puede estar vacío.")
+                csv_reader.fieldnames = [normalized_fieldnames.get(name, name) for name in csv_reader.fieldnames if name is not None]
 
-                    processed_row = {
-                        'nombre': nombre_raw,
-                        'ubicacion': row.get('ubicacion', '').strip() or None,
-                        'estante': row.get('estante', '').strip() or None,
-                        'nombre_cana': row.get('nombre_cana', '').strip() or None,
-                        'nombre_IUPAC': row.get('nombre_iupac', '').strip() or None,
-                        'formula_molecular': row.get('formula_molecular', '').strip() or None,
-                        'cast_sigmg': row.get('cast_sigmg', '').strip() or None,
-                        'estado_fisico': row.get('estado_fisico', '').strip().lower() or None,
-                        'cantidad': float(row.get('cantidad', '0').replace(',', '.')),
-                        'unidad_medida': row.get('unidad_medida', '').strip().lower() or None,
-                        'estado': row.get('estado', '').strip().lower() or None,
-                        'ubicacion_actual': row.get('ubicacion_actual', '').strip().lower() or None,
-                        'otra_ubicacion_actual': row.get('otra_ubicacion_actual', '').strip() or None,
-                    }
-                    
-                    if processed_row['ubicacion_actual'] != 'otro':
-                        processed_row['otra_ubicacion_actual'] = None
-                    
-                    nombre_upper = nombre_raw.upper()
-                    
-                    if nombre_upper in existing_products_map:
-                        processed_row['id'] = existing_products_map[nombre_upper]
-                        data_to_update.append(processed_row)
-                    else:
-                        data_to_insert.append(processed_row)
-                
-                if data_to_update: db.session.bulk_update_mappings(Producto, data_to_update)
-                if data_to_insert: db.session.bulk_insert_mappings(Producto, data_to_insert)
+            # Valida que las columnas obligatorias existan
+            required_columns = ['nombre', 'cantidad', 'stock_minimo', 'unidad_medida']
+            if not csv_reader.fieldnames or not all(col in csv_reader.fieldnames for col in required_columns):
+                current_fields = set(csv_reader.fieldnames if csv_reader.fieldnames else [])
+                missing = [col for col in required_columns if col not in current_fields]
+                flash(f"El archivo CSV debe contener las siguientes columnas obligatorias: {', '.join(missing)}.", 'danger')
+                return render_template('importar_inventario.html', errors=errors)
+            
+            # Inicia una transacción
+            with db.session.begin_nested():
+                for i, row_original in enumerate(csv_reader, start=2):
+                    row = {}
+                    for k, v in row_original.items():
+                        if k is not None:
+                            row[k] = str(v).strip() if v is not None else ''
 
-            flash(f'Importación exitosa. {len(data_to_insert)} productos creados, {len(data_to_update)} actualizados.', 'success')
+                    nombre_producto = row.get('nombre', '').strip()
+                    if not nombre_producto:
+                        errors.append(f"Fila {i}: El 'nombre' del producto no puede estar vacío.")
+                        continue
+                    
+                    producto = db.session.query(Producto).filter(func.lower(Producto.nombre) == func.lower(nombre_producto)).first()
+                    
+                    try:
+                        if producto:  # Actualizar producto existente
+                            _update_product_from_row(producto, row)
+                        else:  # Crear nuevo producto
+                            nuevo_producto = Producto(nombre=nombre_producto)
+                            _update_product_from_row(nuevo_producto, row)
+                            db.session.add(nuevo_producto)
+                    
+                    except ValueError as e:
+                        # Este bloque captura el error de campo específico lanzado por _update_product_from_row
+                        errors.append(f"Fila {i} (Producto: '{nombre_producto}'): {e}")
+                    except Exception as e:
+                        errors.append(f"Fila {i} (Producto: '{nombre_producto}'): Error inesperado - {e}")
+                
+                if errors:
+                    raise SQLAlchemyError("Errores encontrados durante la importación, revirtiendo cambios.")
+
+            db.session.commit()
+            flash('Inventario importado y/o actualizado exitosamente. 🎉', 'success')
             return redirect(url_for('inventario_completo'))
 
-        except (SQLAlchemyError, ValueError, csv.Error, Exception) as e:
+        except SQLAlchemyError:
+             db.session.rollback() 
+             # Nota: Se mejoró el mensaje aquí, ya que los errores se listan abajo
+             flash('Se encontraron errores en el archivo CSV. No se importó ningún dato. Revisa los detalles abajo.', 'danger')
+        except (csv.Error, Exception) as e:
             db.session.rollback()
-            flash(f'Importación fallida. Error: {e}', 'danger')
+            errors.append(f"Error crítico al leer o procesar el archivo: {e}")
+            flash(f"Error crítico al procesar el archivo. Revisa el formato y el delimitador. Detalles: {e}", 'danger')
 
-    return render_template('importar_inventario.html')
+        return render_template('importar_inventario.html', errors=errors)
 
+    return render_template('importar_inventario.html', errors=[])
 
 @app.route('/panel/usuarios')
 @login_required
@@ -634,7 +816,8 @@ def gestionar_usuario(id=None):
             return redirect(url_for('admin_usuarios'))
         except Exception as e:
             db.session.rollback()
-            flash(f"Ocurrió un error inesperado: {e}", "danger")
+            flash("Ocurrió un error inesperado al gestionar el usuario.", "danger")
+            app.logger.error(f"Error al gestionar usuario: {e}")
 
     return render_template('gestion_usuario.html', user=user)
 
@@ -654,7 +837,8 @@ def borrar_usuario(id):
             flash(f'Usuario "{user_a_borrar.nombre}" eliminado.', 'success')
         except Exception as e:
             db.session.rollback()
-            flash(f'No se pudo eliminar al usuario. Error: {e}', 'danger')
+            flash('No se pudo eliminar al usuario. Ocurrió un error inesperado.', 'danger')
+            app.logger.error(f"Error al eliminar usuario: {e}")
     else:
         flash("Usuario no encontrado.", "warning")
     return redirect(url_for('admin_usuarios'))
@@ -685,28 +869,19 @@ def create_user_cli():
     db.session.commit()
     print(f"¡Usuario '{nombre}' con rol '{rol}' creado exitosamente!")
 
-# --- MEJORAS DE SEGURIDAD: Encabezados HTTP (Middleware) ---
 @app.after_request
 def set_security_headers(response):
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    
-    # --- CÓDIGO CORREGIDO ---
-    # Se añade 'unsafe-inline' a script-src para permitir scripts en las plantillas.
-    # Se añaden las URLs de Google Fonts a style-src y font-src para permitir su carga.
     csp = (
         "default-src 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
-        "style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "script-src 'self' https://cdn.jsdelivr.net; "
+        "style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; "
         "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; "
         "img-src 'self' data:;"
     )
     response.headers['Content-Security-Policy'] = csp
-    
-    # Opcional, solo si usas HTTPS en producción:
-    # response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    
     return response
 
 if __name__ == '__main__':
