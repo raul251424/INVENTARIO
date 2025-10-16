@@ -1,45 +1,59 @@
 {% extends "base.html" %}
-{% block title %}{% if producto %}Editar{% else %}Nuevo{% endif %} Producto{% endblock %}
+{% block title %}{{ 'Editar' if producto else 'Nuevo' }} Producto{% endblock %}
 
 {% block content %}
 <div class="card shadow-lg mb-4">
     <div class="card-header bg-primary text-white">
-        <h3 class="card-title mb-0"><i class="bi bi-flask me-2"></i> {% if producto %}Editar Producto{% else %}Añadir Nuevo Producto{% endif %}</h3>
+        <h3 class="card-title mb-0">
+            <i class="bi bi-flask me-2"></i> 
+            {% if producto %}Editar Producto{% else %}Añadir Nuevo Producto{% endif %}
+        </h3>
     </div>
+
     <div class="card-body">
         <form method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
             <div class="row g-4">
                 
                 <div class="col-md-6 border-end">
-                    <h4 class="mb-3 text-primary border-bottom pb-2"><i class="bi bi-search me-2"></i> Identificación Química</h4>
+                    <h4 class="mb-3 text-primary border-bottom pb-2">
+                        <i class="bi bi-search me-2"></i> Identificación Química
+                    </h4>
                     
                     <div class="mb-3">
                         <label for="nombre" class="form-label fw-bold">Nombre del Producto</label>
-                        <input type="text" class="form-control" id="nombre" name="nombre" value="{{ producto.nombre if producto else '' }}" required>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="formula_molecular" class="form-label">Fórmula Molecular</label>
-                        <input type="text" class="form-control" id="formula_molecular" name="formula_molecular" value="{{ producto.formula_molecular if producto else '' }}">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="nombre_IUPAC" class="form-label">Nombre IUPAC</label>
-                        <input type="text" class="form-control" id="nombre_IUPAC" name="nombre_IUPAC" value="{{ producto.nombre_IUPAC if producto else '' }}">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="nombre_cana" class="form-label">Nombre Cana</label>
-                        <input type="text" class="form-control" id="nombre_cana" name="nombre_cana" value="{{ producto.nombre_cana if producto else '' }}">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="cast_sigmg" class="form-label">CAS / SIGMG</label>
-                        <input type="text" class="form-control" id="cast_sigmg" name="cast_sigmg" value="{{ producto.cast_sigmg if producto else '' }}">
+                        <input type="text" class="form-control" id="nombre" name="nombre"
+                               value="{{ producto.nombre if producto else '' }}" required>
                     </div>
 
-                    <h4 class="mb-3 text-primary border-bottom pb-2 mt-4"><i class="bi bi-box-seam me-2"></i> Estado del Producto</h4>
+                    <div class="mb-3">
+                        <label for="formula_molecular" class="form-label">Fórmula Molecular</label>
+                        <input type="text" class="form-control" id="formula_molecular" name="formula_molecular"
+                               value="{{ producto.formula_molecular if producto else '' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="nombre_IUPAC" class="form-label">Nombre IUPAC</label>
+                        <input type="text" class="form-control" id="nombre_IUPAC" name="nombre_IUPAC"
+                               value="{{ producto.nombre_IUPAC if producto else '' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="nombre_cana" class="form-label">Nombre Cana</label>
+                        <input type="text" class="form-control" id="nombre_cana" name="nombre_cana"
+                               value="{{ producto.nombre_cana if producto else '' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="cast_sigmg" class="form-label">CAS / SIGMG</label>
+                        <input type="text" class="form-control" id="cast_sigmg" name="cast_sigmg"
+                               value="{{ producto.cast_sigmg if producto else '' }}">
+                    </div>
+
+                    <h4 class="mb-3 text-primary border-bottom pb-2 mt-4">
+                        <i class="bi bi-box-seam me-2"></i> Estado del Producto
+                    </h4>
 
                     <div class="row g-3">
                         <div class="col-md-6">
@@ -50,6 +64,7 @@
                                 <option value="gaseoso" {% if producto and producto.estado_fisico|lower == 'gaseoso' %}selected{% endif %}>Gaseoso</option>
                             </select>
                         </div>
+
                         <div class="col-md-6">
                             <label for="estado" class="form-label">Estado del Envase</label>
                             <select class="form-select" id="estado" name="estado">
@@ -59,39 +74,67 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="col-md-6">
-                    <h4 class="mb-3 text-success border-bottom pb-2"><i class="bi bi-bar-chart-line me-2"></i> Detalles de Inventario y Ubicación</h4>
+                    <h4 class="mb-3 text-success border-bottom pb-2">
+                        <i class="bi bi-bar-chart-line me-2"></i> Detalles de Inventario y Ubicación
+                    </h4>
 
                     <div class="row g-3 mb-3">
                         <div class="col-6">
                             <label for="cantidad" class="form-label fw-bold">Cantidad Inicial/Actual</label>
-                            <input type="number" step="any" class="form-control" id="cantidad" name="cantidad" value="{{ producto.cantidad if producto else '' }}" required min="0">
+                            <input type="number" step="any" class="form-control" id="cantidad" name="cantidad"
+                                   value="{{ producto.cantidad if producto else '' }}" required min="0">
                         </div>
+
                         <div class="col-6">
-                            <label for="unidad_medida" class="form-label fw-bold">Unidad de Medida</label>
-                            <select class="form-select" id="unidad_medida" name="unidad_medida">
-                                {% set unidades = ['gramos', 'kilogramos', 'miligramos', 'mililitros', 'litros', 'microlitros', 'moles', 'milimoles', 'unidades', 'paquetes'] %}
-                                {% for unidad in unidades %}
-                                <option value="{{ unidad }}" {% if producto and producto.unidad_medida|lower == unidad %}selected{% endif %}>{{ unidad.capitalize() }}</option>
+                            <label for="unidad_medida" class="form-label">Unidad de medida</label>
+                            <select class="form-control" id="unidad_medida" name="unidad_medida" required>
+                                {% set unidades_map = {
+                                    'g': 'Gramos', 
+                                    'kg': 'Kilogramos', 
+                                    'mg': 'Miligramos', 
+                                    'ml': 'Mililitros', 
+                                    'l': 'Litros', 
+                                    'µl': 'Microlitros', 
+                                    'mol': 'Moles', 
+                                    'mmol': 'Milimoles', 
+                                    'u': 'Unidades', 
+                                    'paquetes': 'Paquetes'
+                                } %}
+                                
+                                {% for abreviatura, nombre_completo in unidades_map.items() %}
+                                <option value="{{ abreviatura }}" 
+                                    {% if producto and producto.unidad_medida|lower == abreviatura %}selected{% endif %}>
+                                    {{ nombre_completo }} ({{ abreviatura }})
+                                </option>
                                 {% endfor %}
+                                {% if producto and producto.unidad_medida not in unidades_map.keys() and producto.unidad_medida not in ['gramos', 'kilogramos', 'mililitros', 'litros', 'unidades'] %}
+                                    <option value="{{ producto.unidad_medida }}" selected>{{ producto.unidad_medida | capitalize }}</option>
+                                {% endif %}
                             </select>
                         </div>
                     </div>
-                    
+
                     <div class="row g-3 mb-3">
                         <div class="col-6">
                             <label for="ubicacion" class="form-label">Ubicación de Almacén (Área General)</label>
-                            <input type="text" class="form-control" id="ubicacion" name="ubicacion" value="{{ producto.ubicacion if producto else '' }}">
+                            <input type="text" class="form-control" id="ubicacion" name="ubicacion"
+                                   value="{{ producto.ubicacion if producto else '' }}">
                         </div>
+
                         <div class="col-6">
                             <label for="estante" class="form-label">Estante/Gabinete Específico</label>
-                            <input type="text" class="form-control" id="estante" name="estante" value="{{ producto.estante if producto else '' }}">
+                            <input type="text" class="form-control" id="estante" name="estante"
+                                   value="{{ producto.estante if producto else '' }}">
                         </div>
                     </div>
-                    
-                    <h5 class="mt-4 mb-3 text-success"><i class="bi bi-geo-alt me-2"></i> Ubicación Actual (Uso)</h5>
-                    <div class="mb-3">
+
+                    <h5 class="mt-4 mb-3 text-success">
+                        <i class="bi bi-geo-alt me-2"></i> Ubicación Actual (Uso)
+                    </h5>
+
+                    <div class="mb-3" id="ubicacion_select_container">
                         <label for="ubicacion_actual" class="form-label fw-bold">Laboratorio/Área</label>
                         <select class="form-select" id="ubicacion_actual" name="ubicacion_actual">
                             <option value="lesqo" {% if producto and producto.ubicacion_actual|lower == 'lesqo' %}selected{% endif %}>LESQO</option>
@@ -99,16 +142,13 @@
                             <option value="otro" {% if producto and producto.ubicacion_actual|lower == 'otro' %}selected{% endif %}>Otro</option>
                         </select>
                     </div>
-                    
-                    <div class="mb-3" id="otra_ubicacion_div" style="display: none;">
-                        <label for="otra_ubicacion_actual" class="form-label">Especificar otra ubicación (ej. Mesa 3, Campana de Extracción):</label>
-                        <input type="text" class="form-control" id="otra_ubicacion_actual" name="otra_ubicacion_actual" value="{{ producto.otra_ubicacion_actual if producto else '' }}">
-                    </div>
                 </div>
             </div>
-            
+
             <hr class="mt-4 mb-3">
-            <button type="submit" class="btn btn-primary btn-lg me-2"><i class="bi bi-save me-1"></i> Guardar Producto</button>
+            <button type="submit" class="btn btn-primary btn-lg me-2">
+                <i class="bi bi-save me-1"></i> Guardar Producto
+            </button>
             <a href="{{ url_for('inventario_completo') }}" class="btn btn-secondary btn-lg">Cancelar</a>
         </form>
     </div>
@@ -119,18 +159,50 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const selectUbicacion = document.getElementById('ubicacion_actual');
-        const otraUbicacionDiv = document.getElementById('otra_ubicacion_div');
-
-        function actualizarVisibilidad() {
-            if (selectUbicacion.value === 'otro') {
-                otraUbicacionDiv.style.display = 'block';
-            } else {
-                otraUbicacionDiv.style.display = 'none';
-            }
+        const selectContainer = document.getElementById('ubicacion_select_container');
+        
+        // Detener el script si los elementos principales no se encuentran.
+        if (!selectUbicacion || !selectContainer) {
+            console.error("Error crítico: No se encontraron los elementos necesarios para la lógica de ubicación.");
+            return;
         }
 
+        const initialOtraUbicacionValue = "{{ producto.otra_ubicacion_actual | e if producto and producto.otra_ubicacion_actual else '' }}";
+
+        function createOtraUbicacionDiv() {
+            const div = document.createElement('div');
+            div.id = 'otra_ubicacion_div_injected';
+            div.className = 'mb-3';
+            
+            div.innerHTML = `
+                <label for="otra_ubicacion_actual" class="form-label">Especificar otra ubicación (ej. Mesa 3, Campana de Extracción):</label>
+                <input type="text" class="form-control" id="otra_ubicacion_actual" name="otra_ubicacion_actual"
+                       value="${initialOtraUbicacionValue}">
+            `;
+            return div;
+        }
+
+        function actualizarVisibilidad() {
+            const currentValue = selectUbicacion.value.toLowerCase().trim();
+            const isOtro = currentValue === 'otro';
+            let injectedDiv = document.getElementById('otra_ubicacion_div_injected');
+            
+            if (isOtro) {
+                if (!injectedDiv) {
+                    const newDiv = createOtraUbicacionDiv();
+                    selectContainer.insertAdjacentElement('afterend', newDiv);
+                }
+            } else {
+                if (injectedDiv) {
+                    injectedDiv.remove();
+                }
+            }
+        }
+        
         selectUbicacion.addEventListener('change', actualizarVisibilidad);
-        actualizarVisibilidad();
+        
+        // Ejecutar inmediatamente al cargar la página
+        actualizarVisibilidad(); 
     });
 </script>
 {% endblock %}

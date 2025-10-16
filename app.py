@@ -1,4 +1,4 @@
-# app.py (CÓDIGO COMPLETO CON LA CORRECCIÓN DE PAGINACIÓN)
+# app.py (CÓDIGO COMPLETO Y CORREGIDO con Encabezados de Seguridad)
 
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify, session, Response
 from flask_sqlalchemy import SQLAlchemy
@@ -9,13 +9,14 @@ from os import getenv
 from datetime import datetime, timedelta
 import pytz
 import bcrypt
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import select, func, text 
 import time
 import csv
 from io import StringIO
 from typing import List, Dict, Any
+from flask_migrate import Migrate
 
 # --- INICIALIZACIÓN Y CONFIGURACIÓN ---
 load_dotenv()
@@ -32,6 +33,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
 login_manager = LoginManager(app)
+migrate = Migrate(app, db) 
 
 login_manager.login_view = 'login'
 login_manager.login_message = "Por favor, inicia sesión para acceder."
@@ -50,6 +52,20 @@ def format_datetime_local(dt):
     if dt.tzinfo is None: dt = utc_tz.localize(dt)
     local_dt = dt.astimezone(local_tz)
     return local_dt.strftime('%d/%m/%Y %H:%M')
+
+@app.template_filter('abreviar_unidad')
+def abreviar_unidad_filter(unidad):
+    """Convierte el nombre completo de la unidad a su abreviatura estandarizada."""
+    unidad = str(unidad).lower().strip()
+    mapa = {
+        'gramos': 'g', 'kilogramos': 'kg', 'miligramos': 'mg',
+        'mililitros': 'ml', 'litros': 'L', 'microlitros': 'µl',
+        'moles': 'mol', 'milimoles': 'mmol', 'unidades': 'u',
+        'unidad': 'u', 'paquetes': 'paquetes', 'g': 'g', 'kg': 'kg', 
+        'mg': 'mg', 'ml': 'ml', 'l': 'L', 'µl': 'µl', 'mol': 'mol', 
+        'mmol': 'mmol', 'u': 'u'
+    }
+    return mapa.get(unidad, unidad)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -75,17 +91,17 @@ class Producto(db.Model):
     __tablename__ = 'producto'
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(500), nullable=False, unique=True, index=True) 
-    ubicacion = db.Column(db.String(255))
+    ubicacion = db.Column(db.String(255), index=True)
     estante = db.Column(db.String(100))
     nombre_cana = db.Column(db.String(255))
     nombre_IUPAC = db.Column(db.String(500))
     formula_molecular = db.Column(db.String(255))
     cast_sigmg = db.Column(db.String(255))
-    estado_fisico = db.Column(db.String(100))
+    estado_fisico = db.Column(db.String(100), index=True)
     cantidad = db.Column(db.Float)
-    unidad_medida = db.Column(db.String(100))
-    estado = db.Column(db.String(100))
-    ubicacion_actual = db.Column(db.String(255))
+    unidad_medida = db.Column(db.String(100), index=True)
+    estado = db.Column(db.String(100), index=True)
+    ubicacion_actual = db.Column(db.String(255), index=True)
     otra_ubicacion_actual = db.Column(db.String(500), nullable=True)
     detalles_orden = db.relationship('DetalleOrden', backref='producto', lazy=True, cascade="all, delete-orphan")
 
@@ -96,7 +112,7 @@ class Orden(db.Model):
     creado_por_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     fecha_solicitud = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     fecha_cierre = db.Column(db.DateTime, nullable=True)
-    estado = db.Column(db.String(20), default='ABIERTA')
+    estado = db.Column(db.String(20), default='ABIERTA', index=True)
     observaciones = db.Column(db.Text, nullable=True)
     detalles = db.relationship('DetalleOrden', backref='orden', lazy='joined', cascade="all, delete-orphan")
 
@@ -137,12 +153,10 @@ def login():
             flash('Correo electrónico o contraseña no válidos.', 'danger')
     return render_template('login.html')
 
-@app.route('/logout', methods=['GET', 'POST'])
+@app.route('/logout', methods=['POST'])
 @login_required
 def logout():
     logout_user()
-    if request.method == 'POST':
-        return '', 204
     return redirect(url_for('login'))
 
 @app.route('/')
@@ -164,25 +178,15 @@ def admin_dashboard():
 @app.route('/panel/inventario')
 @login_required
 def inventario_completo():
-    # --- INICIO CORRECCIÓN DE VALIDACIÓN Y PAGINACIÓN ---
     try:
-        # Recuperamos 'page' y lo forzamos a ser un entero, por defecto 1
         page = int(request.args.get('page', 1))
-        # Recuperamos 'per_page' y lo forzamos a ser un entero, por defecto 10
         per_page = int(request.args.get('per_page', 10))
-    except ValueError:
-        # Si el valor de 'page' o 'per_page' es inválido (ej. 'abc'), usamos los valores por defecto
-        page = 1
-        per_page = 10
+    except (ValueError, TypeError):
+        page, per_page = 1, 10
         
-    # Validamos que per_page esté en las opciones permitidas
-    if per_page not in [10, 25, 50]: 
-        per_page = 10
-    # Aseguramos que la página sea al menos 1
-    if page < 1:
-        page = 1
+    if per_page not in [10, 25, 50]: per_page = 10
+    if page < 1: page = 1
     
-    # Resto de filtros, que ya estaban correctos
     search_term = request.args.get('search', '', type=str)
     estado_fisico_filter = request.args.get('estado_fisico', 'todos', type=str)
     unidad_medida_filter = request.args.get('unidad_medida', 'todas', type=str)
@@ -202,24 +206,28 @@ def inventario_completo():
     if ubicacion_actual_filter != 'todas':
         query = query.filter(func.upper(Producto.ubicacion_actual) == ubicacion_actual_filter.upper())
 
-    estados_fisicos_unicos = db.session.query(Producto.estado_fisico).distinct().filter(Producto.estado_fisico != None).all()
-    unidades_medida_unicas = db.session.query(Producto.unidad_medida).distinct().filter(Producto.unidad_medida != None).all()
+    estados_fisicos_unicos_raw = db.session.query(Producto.estado_fisico).distinct().filter(Producto.estado_fisico != None).all()
+    estados_fisicos_unicos = sorted([e[0] for e in estados_fisicos_unicos_raw])
+    
+    unidades_medida_unicas_raw = db.session.query(Producto.unidad_medida).distinct().filter(Producto.unidad_medida != None).all()
+    unidades_medida_unicas = sorted([u[0] for u in unidades_medida_unicas_raw])
     
     estados_envase_posibles = ['abierto', 'cerrado']
     ubicaciones_actuales_posibles = ['lesqo', 'loefba', 'otro']
 
-    # La paginación debe usar los valores limpios de page y per_page
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     
-    # Si la página solicitada es mayor que el número total de páginas, redirigimos a la última página válida
     if page > pagination.pages and pagination.pages > 0:
          return redirect(url_for('inventario_completo', page=pagination.pages, **request.args))
-    elif page < 1:
-        return redirect(url_for('inventario_completo', page=1, **request.args))
 
-    return render_template('inventario_completo.html', productos=pagination.items, pagination=pagination, search_term=search_term, per_page=per_page, estado_fisico_filter=estado_fisico_filter, unidad_medida_filter=unidad_medida_filter, estado_envase_filter=estado_envase_filter, ubicacion_actual_filter=ubicacion_actual_filter, estados_fisicos_unicos=[e[0] for e in estados_fisicos_unicos], estados_envase_unicos=estados_envase_posibles, unidades_medida_unicas=[u[0] for u in unidades_medida_unicas], ubicaciones_actuales_unicas=ubicaciones_actuales_posibles)
-    # --- FIN CORRECCIÓN DE VALIDACIÓN Y PAGINACIÓN ---
-
+    return render_template('inventario_completo.html', 
+        productos=pagination.items, pagination=pagination, search_term=search_term, 
+        per_page=per_page, estado_fisico_filter=estado_fisico_filter, 
+        unidad_medida_filter=unidad_medida_filter, estado_envase_filter=estado_envase_filter, 
+        ubicacion_actual_filter=ubicacion_actual_filter, estados_fisicos_unicos=estados_fisicos_unicos, 
+        estados_envase_unicos=estados_envase_posibles, unidades_medida_unicas=unidades_medida_unicas, 
+        ubicaciones_actuales_unicas=ubicaciones_actuales_posibles
+    )
 
 @app.route('/panel/ordenes')
 @login_required
@@ -228,11 +236,17 @@ def admin_ordenes():
     per_page = request.args.get('per_page', 10, type=int)
     if per_page not in [10, 25, 50]: per_page = 10
     estado_filter = request.args.get('estado', 'todas', type=str)
-    query = Orden.query.options(joinedload(Orden.creador)).order_by(Orden.fecha_solicitud.desc())
+    
+    query = Orden.query.options(
+        joinedload(Orden.creador),
+        selectinload(Orden.detalles).joinedload(DetalleOrden.producto)
+    ).order_by(Orden.fecha_solicitud.desc())
+    
     if estado_filter == 'abiertas':
         query = query.filter(Orden.estado == 'ABIERTA')
     elif estado_filter == 'cerradas':
         query = query.filter(Orden.estado == 'CERRADA')
+        
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     return render_template('admin_ordenes.html', ordenes=pagination.items, pagination=pagination, per_page=per_page, estado_filter=estado_filter)
 
@@ -244,11 +258,11 @@ def crear_orden():
         try:
             solicitado_por = request.form.get('solicitado_por')
             producto_id = int(request.form.get('producto_id'))
-            cantidad_str = request.form.get('cantidad').replace(',', '.')
+            cantidad_str = request.form.get('cantidad', '0').replace(',', '.')
             cantidad = float(cantidad_str)
 
-            if not all([solicitado_por, producto_id, cantidad]):
-                flash('Todos los campos son obligatorios.', 'danger')
+            if not all([solicitado_por, producto_id, cantidad > 0]):
+                flash('Todos los campos son obligatorios y la cantidad debe ser mayor a cero.', 'danger')
                 return render_template('crear_orden.html', productos=productos)
             
             producto = db.session.get(Producto, producto_id)
@@ -333,7 +347,7 @@ def admin_borrar_historial_seleccion():
         return redirect(url_for('admin_historial'))
 
     try:
-        OrdenHistorial.query.filter(OrdenHistorial.id.in_(historial_ids)).delete(synchronize_session='fetch')
+        OrdenHistorial.query.filter(OrdenHistorial.id.in_(historial_ids)).delete(synchronize_session=False)
         db.session.commit()
         flash(f'Se eliminaron {len(historial_ids)} registros del historial.', 'success')
     except Exception as e:
@@ -371,7 +385,7 @@ def admin_borrar_orden_historial(orden_id):
                     if producto.cantidad is None: producto.cantidad = 0
                     producto.cantidad += detalle.cantidad_pedida
         productos_info = ", ".join([f"{d.producto.nombre if d.producto else 'N/A'} (x{d.cantidad_pedida})" for d in orden.detalles])
-        rol = 'Admin' if current_user.es_admin else 'Gerente'
+        rol = 'Admin' if current_user.es_admin else 'Usuario'
         
         nuevo_historial = OrdenHistorial(
             original_orden_id=orden.id, solicitante_info=orden.solicitado_por,
@@ -404,6 +418,45 @@ def admin_borrar_producto(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error inesperado: {e}'}), 500
+
+@app.route('/panel/producto/borrar-seleccion', methods=['POST'])
+@login_required
+def admin_borrar_productos_seleccion():
+    if not current_user.es_admin: abort(403)
+    producto_ids = request.form.getlist('producto_ids')
+    if not producto_ids:
+        flash('No se seleccionó ningún producto para eliminar.', 'warning')
+        return redirect(url_for('inventario_completo'))
+
+    try:
+        num_deleted = db.session.query(Producto).filter(Producto.id.in_(producto_ids)).delete(synchronize_session=False)
+        db.session.commit()
+        flash(f'Se eliminaron {num_deleted} productos seleccionados.', 'success')
+    except IntegrityError:
+        db.session.rollback()
+        flash('Error: No se pudieron eliminar algunos productos porque están en uso en órdenes.', 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al eliminar productos: {e}', 'danger')
+    
+    return redirect(url_for('inventario_completo'))
+
+@app.route('/panel/producto/borrar-todo', methods=['POST'])
+@login_required
+def admin_borrar_productos_todo():
+    if not current_user.es_admin: abort(403)
+    try:
+        num_deleted = db.session.query(Producto).delete(synchronize_session=False)
+        db.session.commit()
+        flash(f'¡ADVERTENCIA! Se eliminaron {num_deleted} productos. El inventario está vacío.', 'danger')
+    except IntegrityError:
+        db.session.rollback()
+        flash('Error: No se pueden eliminar todos los productos porque algunos están en uso en órdenes.', 'danger')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al borrar todo el inventario: {e}', 'danger')
+    
+    return redirect(url_for('inventario_completo'))
 
 @app.route('/panel/orden/cerrar/<int:orden_id>', methods=['GET', 'POST'])
 @login_required
@@ -443,16 +496,13 @@ def cerrar_orden(orden_id):
             flash(f'Error al cerrar la orden: {e}', 'danger')
     return render_template('admin_cerrar_orden.html', orden=orden)
 
-# --- RUTA DE IMPORTACIÓN CSV CON CORRECCIÓN DE TRANSACCIÓN ---
 @app.route('/panel/inventario/importar', methods=['GET', 'POST'])
 @login_required
 def importar_inventario():
-    db.session.close() # <-- LÍNEA DE ÚLTIMO RECURSO
-    if not current_user.es_admin:
-        abort(403)
+    if not current_user.es_admin: abort(403)
 
     if request.method == 'POST':
-        if 'archivo_csv' not in request.files or request.files['archivo_csv'].filename == '':
+        if 'archivo_csv' not in request.files or not request.files['archivo_csv'].filename:
             flash('No se seleccionó ningún archivo.', 'danger')
             return redirect(request.url)
 
@@ -462,95 +512,78 @@ def importar_inventario():
             return redirect(request.url)
 
         try:
-            file_content = file.stream.read().decode("utf-8")
-            file_content_clean = file_content.lstrip('\ufeff')
+            file_content = file.stream.read().decode("utf-8-sig")
+            stream = StringIO(file_content)
             
-            stream = StringIO(file_content_clean)
             try:
-                dialect = csv.Sniffer().sniff(stream.read(1024), delimiters=',;\t')
+                dialect = csv.Sniffer().sniff(stream.read(2048), delimiters=',;\t')
                 stream.seek(0)
-                delimiter = dialect.delimiter
             except csv.Error:
                 stream.seek(0)
-                delimiter = ','
+                dialect = csv.excel
             
-            reader_for_validation = csv.DictReader(stream, delimiter=delimiter)
-            reader_for_validation.fieldnames = [name.strip().lower() for name in reader_for_validation.fieldnames]
+            reader_for_validation = csv.DictReader(stream, dialect=dialect)
+            reader_for_validation.fieldnames = [name.strip().lower() for name in reader_for_validation.fieldnames or []]
 
             required_fields = ['nombre', 'cantidad', 'unidad_medida']
             if not all(field in reader_for_validation.fieldnames for field in required_fields):
                 missing = ", ".join([field for field in required_fields if field not in reader_for_validation.fieldnames])
-                raise ValueError(f"Faltan encabezados obligatorios en el archivo CSV: {missing}")
+                raise ValueError(f"Faltan encabezados obligatorios: {missing}")
+            
+            stream.seek(0) 
+            reader = csv.DictReader(stream, dialect=dialect)
+            reader.fieldnames = [name.strip().lower() for name in reader.fieldnames]
 
             with db.session.begin():
-                existing_products_query = select(Producto.id, func.upper(Producto.nombre).label('nombre_upper'))
-                result = db.session.execute(existing_products_query).all()
-                existing_products_map = {row.nombre_upper: row.id for row in result}
-
-                stream.seek(0)
-                reader = csv.DictReader(stream, delimiter=delimiter)
-                reader.fieldnames = [name.strip().lower() for name in reader.fieldnames]
+                existing_products_map = {p.nombre.upper(): p.id for p in Producto.query.all()}
                 
                 data_to_insert, data_to_update = [], []
                 
-                field_mapping = {
-                    'nombre': 'nombre', 'ubicacion': 'ubicacion', 'estante': 'estante',
-                    'nombre_cana': 'nombre_cana', 'nombre_IUPAC': 'nombre_IUPAC',
-                    'formula_molecular': 'formula_molecular', 'cast_sigmg': 'cast_sigmg',
-                    'estado_fisico': 'estado_fisico', 'cantidad': 'cantidad',
-                    'unidad_medida': 'unidad_medida', 'estado': 'estado',
-                    'ubicacion_actual': 'ubicacion_actual', 'otra_ubicacion_actual': 'otra_ubicacion_actual',
-                }
-
                 for row_number, row in enumerate(reader, 2):
                     nombre_raw = row.get('nombre', '').strip()
                     if not nombre_raw:
-                        raise ValueError(f"Fila {row_number}: El campo 'nombre' no puede estar vacío.")
+                        raise ValueError(f"Fila {row_number}: El 'nombre' no puede estar vacío.")
 
-                    processed_row = {}
-                    for csv_key, model_attr in field_mapping.items():
-                        csv_value = row.get(csv_key, '').strip()
-                        if model_attr == 'cantidad':
-                            processed_row[model_attr] = float(csv_value.replace(',', '.')) if csv_value else 0.0
-                        elif model_attr in ['estado_fisico', 'unidad_medida', 'estado', 'ubicacion_actual']:
-                            processed_row[model_attr] = csv_value.lower() if csv_value else None
-                        else:
-                            processed_row[model_attr] = csv_value if csv_value else None
+                    processed_row = {
+                        'nombre': nombre_raw,
+                        'ubicacion': row.get('ubicacion', '').strip() or None,
+                        'estante': row.get('estante', '').strip() or None,
+                        'nombre_cana': row.get('nombre_cana', '').strip() or None,
+                        'nombre_IUPAC': row.get('nombre_iupac', '').strip() or None,
+                        'formula_molecular': row.get('formula_molecular', '').strip() or None,
+                        'cast_sigmg': row.get('cast_sigmg', '').strip() or None,
+                        'estado_fisico': row.get('estado_fisico', '').strip().lower() or None,
+                        'cantidad': float(row.get('cantidad', '0').replace(',', '.')),
+                        'unidad_medida': row.get('unidad_medida', '').strip().lower() or None,
+                        'estado': row.get('estado', '').strip().lower() or None,
+                        'ubicacion_actual': row.get('ubicacion_actual', '').strip().lower() or None,
+                        'otra_ubicacion_actual': row.get('otra_ubicacion_actual', '').strip() or None,
+                    }
                     
-                    if processed_row.get('ubicacion_actual') != 'otro':
+                    if processed_row['ubicacion_actual'] != 'otro':
                         processed_row['otra_ubicacion_actual'] = None
                     
-                    processed_row['nombre'] = nombre_raw
                     nombre_upper = nombre_raw.upper()
                     
-                    if nombre_upper in (p['nombre'].upper() for p in data_to_insert):
-                        raise ValueError(f"Fila {row_number}: Nombre de producto '{nombre_raw}' duplicado dentro del mismo archivo CSV.")
-
                     if nombre_upper in existing_products_map:
                         processed_row['id'] = existing_products_map[nombre_upper]
                         data_to_update.append(processed_row)
                     else:
                         data_to_insert.append(processed_row)
                 
-                if not data_to_insert and not data_to_update:
-                    raise ValueError("El archivo CSV está vacío o no contiene datos válidos para procesar.")
-
-                if data_to_update:
-                    db.session.bulk_update_mappings(Producto, data_to_update)
-                if data_to_insert:
-                    db.session.bulk_insert_mappings(Producto, data_to_insert)
+                if data_to_update: db.session.bulk_update_mappings(Producto, data_to_update)
+                if data_to_insert: db.session.bulk_insert_mappings(Producto, data_to_insert)
 
             flash(f'Importación exitosa. {len(data_to_insert)} productos creados, {len(data_to_update)} actualizados.', 'success')
             return redirect(url_for('inventario_completo'))
 
         except (SQLAlchemyError, ValueError, csv.Error, Exception) as e:
-            flash(f'Importación fallida. Todos los cambios fueron revertidos. Error: {e}', 'danger')
-            return render_template('importar_inventario.html', errors=[f"Error: {e}"])
+            db.session.rollback()
+            flash(f'Importación fallida. Error: {e}', 'danger')
 
     return render_template('importar_inventario.html')
 
 
-# --- RUTAS DE GESTIÓN DE USUARIOS (SOLO ADMINS) ---
 @app.route('/panel/usuarios')
 @login_required
 def admin_usuarios():
@@ -566,34 +599,42 @@ def gestionar_usuario(id=None):
     if not current_user.es_admin: abort(403)
     user = db.session.get(User, id) if id else None
     if request.method == 'POST':
-        email = request.form.get('email')
-        nombre = request.form.get('nombre')
-        rol = request.form.get('rol')
-        password = request.form.get('password')
+        try:
+            email = request.form.get('email', '').strip()
+            nombre = request.form.get('nombre', '').strip()
+            rol = request.form.get('rol')
+            password = request.form.get('password')
 
-        existing_user = User.query.filter(User.email == email).first()
-        if existing_user and (user is None or existing_user.id != user.id):
-            flash('El correo electrónico ya está en uso por otro usuario.', 'danger')
-            return render_template('gestion_usuario.html', user=user)
-
-        if user is None:
-            if not password:
-                flash('La contraseña es obligatoria para los nuevos usuarios.', 'danger')
+            if not email or not nombre or not rol:
+                flash("Nombre, email y rol son campos obligatorios.", 'danger')
                 return render_template('gestion_usuario.html', user=user)
-            new_user = User(nombre=nombre, email=email, es_admin=(rol == 'admin'))
-            new_user.set_password(password)
-            db.session.add(new_user)
-            flash('Usuario creado con éxito.', 'success')
-        else:
-            user.nombre = nombre
-            user.email = email
-            user.es_admin = (rol == 'admin')
-            if password:
+
+            existing_user_by_email = User.query.filter(User.email == email, User.id != id).first()
+            if existing_user_by_email:
+                flash('El correo electrónico ya está en uso por otro usuario.', 'danger')
+                return render_template('gestion_usuario.html', user=user)
+
+            if user is None:
+                if not password:
+                    flash('La contraseña es obligatoria para nuevos usuarios.', 'danger')
+                    return render_template('gestion_usuario.html', user=user)
+                user = User(nombre=nombre, email=email, es_admin=(rol == 'admin'))
                 user.set_password(password)
-            flash('Usuario actualizado con éxito.', 'success')
-        
-        db.session.commit()
-        return redirect(url_for('admin_usuarios'))
+                db.session.add(user)
+                flash('Usuario creado con éxito.', 'success')
+            else:
+                user.nombre = nombre
+                user.email = email
+                user.es_admin = (rol == 'admin')
+                if password:
+                    user.set_password(password)
+                flash('Usuario actualizado con éxito.', 'success')
+            
+            db.session.commit()
+            return redirect(url_for('admin_usuarios'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Ocurrió un error inesperado: {e}", "danger")
 
     return render_template('gestion_usuario.html', user=user)
 
@@ -601,38 +642,72 @@ def gestionar_usuario(id=None):
 @login_required
 def borrar_usuario(id):
     if not current_user.es_admin: abort(403)
+    if id == current_user.id:
+        flash('No puedes eliminar tu propia cuenta.', 'danger')
+        return redirect(url_for('admin_usuarios'))
+
     user_a_borrar = db.session.get(User, id)
     if user_a_borrar:
-        if user_a_borrar.id == current_user.id:
-            flash('No puedes eliminar tu propia cuenta.', 'danger')
-        else:
+        try:
             db.session.delete(user_a_borrar)
             db.session.commit()
             flash(f'Usuario "{user_a_borrar.nombre}" eliminado.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'No se pudo eliminar al usuario. Error: {e}', 'danger')
+    else:
+        flash("Usuario no encontrado.", "warning")
     return redirect(url_for('admin_usuarios'))
 
-# --- COMANDOS CLI ---
 @app.cli.command("init-db")
 def init_db_command():
+    """Inicializa la base de datos."""
     db.create_all()
     print("Base de datos inicializada.")
 
 @app.cli.command("create-user")
 def create_user_cli():
+    """Crea un nuevo usuario desde la línea de comandos."""
     nombre = input("Nombre: ")
     email = input("Email: ")
     password = input("Contraseña: ")
     rol = ''
     while rol not in ['admin', 'gerente']:
         rol = input("Rol (admin/gerente): ").lower()
+    
     if User.query.filter_by(email=email).first():
         print(f"Error: El correo '{email}' ya existe.")
         return
+        
     user = User(nombre=nombre, email=email, es_admin=(rol == 'admin'))
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
     print(f"¡Usuario '{nombre}' con rol '{rol}' creado exitosamente!")
+
+# --- MEJORAS DE SEGURIDAD: Encabezados HTTP (Middleware) ---
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    # --- CÓDIGO CORREGIDO ---
+    # Se añade 'unsafe-inline' a script-src para permitir scripts en las plantillas.
+    # Se añaden las URLs de Google Fonts a style-src y font-src para permitir su carga.
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+        "style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; "
+        "img-src 'self' data:;"
+    )
+    response.headers['Content-Security-Policy'] = csp
+    
+    # Opcional, solo si usas HTTPS en producción:
+    # response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    return response
 
 if __name__ == '__main__':
     app.run(debug=True)
