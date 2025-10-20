@@ -2,218 +2,157 @@
 {% block title %}{{ 'Editar' if producto else 'Nuevo' }} Producto{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-xl-8 col-lg-10">
+<div class="card shadow-lg mb-4">
+    <div class="card-header bg-primary text-white">
+        <h3 class="card-title mb-0">
+            <i class="bi bi-flask me-2"></i> 
+            {% if producto %}Editar Producto{% else %}Añadir Nuevo Producto{% endif %}
+        </h3>
+    </div>
 
-        <div class="card shadow-lg mb-4">
-            <div class="card-header bg-primary text-white">
-                <h3 class="card-title mb-0">
-                    <i class="bi bi-flask me-2"></i> 
-                    {% if producto %}Editar Producto: {{ producto.nombre }}{% else %}Añadir Nuevo Producto{% endif %}
-                </h3>
-            </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="next" value="{{ next_url }}"/>
 
-            <div class="card-body p-4">
-                <form method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    <!-- Campo oculto para la persistencia del filtro -->
-                    <input type="hidden" name="next" value="{{ next_url if next_url else url_for('inventario_completo') }}">
+            <div class="row g-4">
+                <!-- Columna izquierda: Identificación Química -->
+                <div class="col-md-6 border-end">
+                    <h4 class="mb-3 text-primary border-bottom pb-2">Identificación Química</h4>
+                    
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label fw-bold">Nombre del Producto</label>
+                        <input type="text" class="form-control" id="nombre" name="nombre"
+                               value="{{ producto.nombre if producto else '' }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="formula_molecular" class="form-label">Fórmula Molecular</label>
+                        <input type="text" class="form-control" id="formula_molecular" name="formula_molecular"
+                               value="{{ producto.formula_molecular if producto else '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="nombre_IUPAC" class="form-label">Nombre IUPAC</label>
+                        <input type="text" class="form-control" id="nombre_IUPAC" name="nombre_IUPAC"
+                               value="{{ producto.nombre_IUPAC if producto else '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="nombre_cana" class="form-label">Nombre Cana</label>
+                        <input type="text" class="form-control" id="nombre_cana" name="nombre_cana"
+                               value="{{ producto.nombre_cana if producto else '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="cast_sigmg" class="form-label">CAS / SIGMG</label>
+                        <input type="text" class="form-control" id="cast_sigmg" name="cast_sigmg"
+                               value="{{ producto.cast_sigmg if producto else '' }}">
+                    </div>
+                </div>
 
-                    <div class="row g-4">
-                        
-                        <!-- Columna 1: Identificación y Ubicación de Almacén -->
-                        <div class="col-md-6 border-end pr-md-4">
-                            <h4 class="mb-3 text-primary border-bottom pb-2"><i class="bi bi-search me-2"></i> Identificación Química</h4>
-                            
-                            <div class="mb-3">
-                                <label for="nombre" class="form-label fw-bold">Nombre del Producto *</label>
-                                <input type="text" class="form-control" id="nombre" name="nombre"
-                                       value="{{ producto.nombre if producto else '' }}" required>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="nombre_cana" class="form-label">Nombre Común (Caña)</label>
-                                <input type="text" class="form-control" id="nombre_cana" name="nombre_cana"
-                                       value="{{ producto.nombre_cana if producto else '' }}">
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="formula_molecular" class="form-label">Fórmula Molecular</label>
-                                <input type="text" class="form-control" id="formula_molecular" name="formula_molecular"
-                                       value="{{ producto.formula_molecular if producto else '' }}">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="nombre_IUPAC" class="form-label">Nombre IUPAC</label>
-                                <input type="text" class="form-control" id="nombre_IUPAC" name="nombre_IUPAC"
-                                       value="{{ producto.nombre_IUPAC if producto else '' }}">
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="cast_sigmg" class="form-label">CAS / SIGMG</label>
-                                <input type="text" class="form-control" id="cast_sigmg" name="cast_sigmg"
-                                       value="{{ producto.cast_sigmg if producto else '' }}">
-                            </div>
-
-                            <h4 class="mt-4 mb-3 text-info border-bottom pb-2"><i class="bi bi-box me-2"></i> Ubicación Almacenamiento</h4>
-                            <div class="row g-3 mb-3">
-                                <div class="col-md-6">
-                                    <label for="ubicacion" class="form-label">Almacén/Estantería</label>
-                                    <input type="text" class="form-control" id="ubicacion" name="ubicacion"
-                                           value="{{ producto.ubicacion if producto else '' }}">
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="estante" class="form-label">Estante/Cajón</label>
-                                    <input type="text" class="form-control" id="estante" name="estante"
-                                           value="{{ producto.estante if producto else '' }}">
-                                </div>
-                            </div>
+                <!-- Columna derecha: Cantidad y Ubicación -->
+                <div class="col-md-6">
+                    <h4 class="mb-3 text-success border-bottom pb-2">Cantidad y Stock</h4>
+                    
+                    <div class="row g-3 mb-3">
+                        <div class="col-8">
+                            <label for="cantidad" class="form-label fw-bold">Cantidad Actual</label>
+                            <input type="number" step="any" class="form-control" id="cantidad" name="cantidad"
+                                   value="{{ "{:,.2f}".format(producto.cantidad) if producto and producto.cantidad is not none else '0.00' }}" required>
                         </div>
-
-                        <!-- Columna 2: Stock, Estados y Uso -->
-                        <div class="col-md-6">
-                            <h4 class="mb-3 text-success border-bottom pb-2"><i class="bi bi-gear-wide-connected me-2"></i> Gestión de Stock y Estados</h4>
-                            
-                            <div class="row g-3 mb-3">
-                                <div class="col-6">
-                                    <label for="cantidad" class="form-label fw-bold">Cantidad Actual *</label>
-                                    <input type="text" class="form-control" id="cantidad" name="cantidad"
-                                           value="{{ producto.cantidad|default(0.0)|string if producto else '0.0' }}" required>
-                                </div>
-                                <div class="col-6">
-                                    <label for="unidad_medida" class="form-label fw-bold">Unidad de Medida *</label>
-                                    <select class="form-select" id="unidad_medida" name="unidad_medida" required>
-                                        {% set current_unidad = producto.unidad_medida|lower if producto and producto.unidad_medida else '' %}
-                                        <option value="g" {% if current_unidad == 'g' %}selected{% endif %}>Gramos (g)</option>
-                                        <option value="kg" {% if current_unidad == 'kg' %}selected{% endif %}>Kilogramos (kg)</option>
-                                        <option value="mg" {% if current_unidad == 'mg' %}selected{% endif %}>Miligramos (mg)</option>
-                                        <option value="ml" {% if current_unidad == 'ml' %}selected{% endif %}>Mililitros (ml)</option>
-                                        <option value="l" {% if current_unidad == 'l' %}selected{% endif %}>Litros (L)</option>
-                                        <option value="u" {% if current_unidad == 'u' %}selected{% endif %}>Unidades (u)</option>
-                                        <option value="paquetes" {% if current_unidad == 'paquetes' %}selected{% endif %}>Paquetes</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="stock_minimo" class="form-label text-danger">Stock Mínimo</label>
-                                <input type="text" class="form-control" id="stock_minimo" name="stock_minimo"
-                                       value="{{ producto.stock_minimo|default(0.0)|string if producto else '0.0' }}">
-                            </div>
-
-                            <div class="row g-3 mb-3">
-                                <div class="col-6">
-                                    <label for="estado_fisico" class="form-label">Estado Físico</label>
-                                    <select class="form-select" id="estado_fisico" name="estado_fisico">
-                                        {% set current_estado_fisico = producto.estado_fisico|lower if producto and producto.estado_fisico else '' %}
-                                        <option value="">Seleccione...</option>
-                                        <option value="sólido" {% if current_estado_fisico == 'sólido' %}selected{% endif %}>Sólido</option>
-                                        <option value="líquido" {% if current_estado_fisico == 'líquido' %}selected{% endif %}>Líquido</option>
-                                        <option value="gas" {% if current_estado_fisico == 'gas' %}selected{% endif %}>Gas</option>
-                                    </select>
-                                </div>
-                                <div class="col-6">
-                                    <label for="estado" class="form-label">Estado Envase</label>
-                                    <select class="form-select" id="estado" name="estado">
-                                        {% set current_estado_envase = producto.estado|lower if producto and producto.estado else '' %}
-                                        <option value="">Seleccione...</option>
-                                        <option value="abierto" {% if current_estado_envase == 'abierto' %}selected{% endif %}>Abierto</option>
-                                        <option value="cerrado" {% if current_estado_envase == 'cerrado' %}selected{% endif %}>Cerrado</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-
-                            <h4 class="mt-4 mb-3 text-info border-bottom pb-2"><i class="bi bi-geo-alt me-2"></i> Ubicación Uso (Actual)</h4>
-                            <div class="mb-3">
-                                <label for="ubicacion_actual" class="form-label fw-bold">Laboratorio/Área</label>
-                                <select class="form-select" id="ubicacion_actual" name="ubicacion_actual">
-                                    {% set current_ubicacion_actual = producto.ubicacion_actual|lower if producto and producto.ubicacion_actual else '' %}
-                                    <option value="lesqo" {% if current_ubicacion_actual == 'lesqo' %}selected{% endif %}>LESQO</option>
-                                    <option value="loefba" {% if current_ubicacion_actual == 'loefba' %}selected{% endif %}>LOEFBA</option>
-                                    <option value="otro" {% if current_ubicacion_actual == 'otro' %}selected{% endif %}>Otro</option>
-                                </select>
-                            </div>
-                            <!-- El estilo inicial se controla desde JS. -->
-                            <div class="mb-3" id="otra_ubicacion_actual_div" style="display: none;"> 
-                                <label for="otra_ubicacion_actual" class="form-label">Detalle de Otra Ubicación</label>
-                                <input type="text" class="form-control" id="otra_ubicacion_actual" name="otra_ubicacion_actual"
-                                       value="{{ producto.otra_ubicacion_actual if producto else '' }}">
-                            </div>
-
+                        <div class="col-4">
+                            <label for="unidad_medida" class="form-label fw-bold">Unidad</label>
+                            <select class="form-select" id="unidad_medida" name="unidad_medida">
+                                {% set current_unidad = (producto.unidad_medida | lower) if producto else '' %}
+                                <option value="" {% if not producto or current_unidad == '' %}selected{% endif %}>N/A</option>
+                                <option value="g" {% if current_unidad == 'g' %}selected{% endif %}>Gramos (g)</option>
+                                <option value="kg" {% if current_unidad == 'kg' %}selected{% endif %}>Kilogramos (kg)</option>
+                                <option value="ml" {% if current_unidad == 'ml' %}selected{% endif %}>Mililitros (ml)</option>
+                                <option value="L" {% if current_unidad == 'l' %}selected{% endif %}>Litros (L)</option>
+                                <option value="u" {% if current_unidad == 'u' %}selected{% endif %}>Unidades (u)</option>
+                                <option value="mol" {% if current_unidad == 'mol' %}selected{% endif %}>Moles (mol)</option>
+                                <option value="cm" {% if current_unidad == 'cm' %}selected{% endif %}>Centímetros (cm)</option>
+                                <option value="pkg" {% if current_unidad == 'pkg' %}selected{% endif %}>Paquetes (PKG)</option>
+                            </select>
                         </div>
                     </div>
 
-                    <hr class="mt-4 mb-3">
-                    <button type="submit" class="btn btn-primary btn-lg me-2">
-                        <i class="bi bi-save me-1"></i> Guardar Producto
-                    </button>
-                    <!-- Usa next_url para volver a la página de inventario filtrada -->
-                    <a href="{{ next_url if next_url else url_for('inventario_completo') }}" class="btn btn-secondary btn-lg">Cancelar</a>
-                </form>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label for="stock_minimo" class="form-label text-danger">Stock Mínimo</label>
+                            <input type="number" step="any" class="form-control" id="stock_minimo" name="stock_minimo"
+                                   value="{{ "{:,.2f}".format(producto.stock_minimo) if producto and producto.stock_minimo is not none else '0.00' }}">
+                        </div>
+                        <div class="col-6">
+                            <label for="estado_fisico" class="form-label">Estado Físico</label>
+                            <select class="form-select" id="estado_fisico" name="estado_fisico">
+                                {% set current_estado_fisico = (producto.estado_fisico | lower) if producto else '' %}
+                                <option value="">N/A</option>
+                                <option value="sólido" {% if current_estado_fisico == 'sólido' %}selected{% endif %}>Sólido</option>
+                                <option value="líquido" {% if current_estado_fisico == 'líquido' %}selected{% endif %}>Líquido</option>
+                                <option value="gaseoso" {% if current_estado_fisico == 'gaseoso' %}selected{% endif %}>Gaseoso</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <h5 class="mb-3 text-info border-bottom pb-2">Ubicación Fija (Almacén)</h5>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label for="ubicacion" class="form-label">Ubicación Almacén</label>
+                            <input type="text" class="form-control" id="ubicacion" name="ubicacion"
+                                   value="{{ producto.ubicacion if producto else '' }}" placeholder="Ej: Refrigerador A">
+                        </div>
+                        <div class="col-6">
+                            <label for="estante" class="form-label">Estante/Gabinete</label>
+                            <input type="text" class="form-control" id="estante" name="estante"
+                                   value="{{ producto.estante if producto else '' }}" placeholder="Ej: Estante 3, Gaveta 5">
+                        </div>
+                    </div>
+
+                    <h5 class="mb-3 text-warning border-bottom pb-2">Estado Actual (Uso)</h5>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label for="ubicacion_actual" class="form-label fw-bold">Ubicación Uso (Actual)</label>
+                            <select class="form-select" id="ubicacion_actual" name="ubicacion_actual">
+                                {% set current_ubicacion_actual = (producto.ubicacion_actual | lower) if producto else 'lesqo' %}
+                                <option value="lesqo" {% if current_ubicacion_actual == 'lesqo' %}selected{% endif %}>LESQO</option>
+                                <option value="loefba" {% if current_ubicacion_actual == 'loefba' %}selected{% endif %}>LOEFBA</option>
+                                <option value="otro" {% if current_ubicacion_actual == 'otro' %}selected{% endif %}>Otro</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label for="estado" class="form-label">Estado Envase</label>
+                            <select class="form-select" id="estado" name="estado">
+                                {% set current_estado = (producto.estado | lower) if producto else 'cerrado' %}
+                                <option value="" {% if current_estado == '' %}selected{% endif %}>N/A (No Especificar)</option>
+                                <option value="cerrado" {% if current_estado == 'cerrado' %}selected{% endif %}>Cerrado</option>
+                                <option value="abierto" {% if current_estado == 'abierto' %}selected{% endif %}>Abierto</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {% set is_otro = (producto.ubicacion_actual | lower) == 'otro' if producto and producto.ubicacion_actual else false %}
+                    
+                    <!-- Este div es controlado por JS (ubicacion.js) -->
+                    <div class="mb-3 d-none" id="otroUbicacionContainer"> 
+                        <label for="otra_ubicacion_actual" class="form-label text-warning fw-bold">Detalle de Otra Ubicación</label>
+                        <input type="text" class="form-control" id="otra_ubicacion_actual" name="otra_ubicacion_actual"
+                               value="{{ producto.otra_ubicacion_actual if producto and producto.otra_ubicacion_actual else '' }}" 
+                               placeholder="Ej: Laboratorio 301, Sala de equipos">
+                    </div>
+
+                </div>
             </div>
-        </div>
+
+            <hr class="mt-4 mb-3">
+            <button type="submit" class="btn btn-primary btn-lg me-2">
+                <i class="bi bi-save me-1"></i> Guardar Producto
+            </button>
+            <a href="{{ next_url }}" class="btn btn-secondary btn-lg">Cancelar</a>
+        </form>
     </div>
 </div>
 {% endblock %}
 
-{% block scripts %}
-<!-- CORRECCIÓN CLAVE: Asegura la carga del JS de Bootstrap -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const ubicacionActualSelect = document.getElementById('ubicacion_actual');
-        const otraUbicacionDiv = document.getElementById('otra_ubicacion_actual_div');
-        const otraUbicacionInput = document.getElementById('otra_ubicacion_actual');
-        
-        // Función para mostrar/ocultar el campo "Detalle de Otra Ubicación"
-        function toggleOtraUbicacion() {
-            // Usa el valor del select para determinar si mostrar u ocultar
-            if (ubicacionActualSelect.value === 'otro') {
-                otraUbicacionDiv.style.display = 'block';
-            } else {
-                otraUbicacionDiv.style.display = 'none';
-                
-                // Limpia el valor en el input si el campo se oculta, PERO solo si estamos creando un producto nuevo o si el campo está vacío.
-                // Si el producto ya tiene un valor guardado (aunque esté oculto temporalmente), NO lo limpiamos.
-                const productoExiste = "{{ producto.id or '' }}" !== '';
-                const valorActual = otraUbicacionInput.value.trim();
-
-                if (!productoExiste || (productoExiste && valorActual !== '')) {
-                     otraUbicacionInput.value = '';
-                }
-            }
-        }
-
-        // Inicializar y configurar el listener
-        ubicacionActualSelect.addEventListener('change', toggleOtraUbicacion);
-        
-        // CORRECCIÓN CLAVE: Ejecutar al inicio para manejar el valor inicial del producto cargado
-        toggleOtraUbicacion();
-    });
-
-    // Scripts para manejo de números (opcional, basado en buenas prácticas)
-    document.addEventListener('DOMContentLoaded', function() {
-        const numericInputs = document.querySelectorAll('#cantidad, #stock_minimo');
-        numericInputs.forEach(input => {
-            input.addEventListener('blur', function() {
-                // Reemplaza comas con puntos y asegura que solo haya un punto decimal
-                this.value = this.value.replace(/,/g, '.').replace(/(\..*)\./g, '$1');
-            });
-            input.addEventListener('keypress', function(event) {
-                // Permite números, el punto decimal y la coma decimal
-                const char = String.fromCharCode(event.charCode);
-                if (/[0-9.,]/.test(char)) {
-                    // Si ya hay un punto o coma, no permite otro
-                    if ((char === '.' || char === ',') && (this.value.includes('.') || this.value.includes(','))) {
-                        event.preventDefault();
-                    }
-                    return true;
-                }
-                event.preventDefault();
-            });
-        });
-    });
-</script>
-{% endblock %}
+{% block scripts %}\n<script src="{{ url_for('static', filename='js/ubicacion.js') }}"></script>\n{% endblock %}

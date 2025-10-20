@@ -2,18 +2,34 @@
 
 {% block title %}Inventario Completo{% endblock %}
 
+{% block head %}
+<style>
+    /* Estilo para las filas con stock bajo, si usas la clase table-danger */
+    .table-danger {
+        /* Para hacer el color un poco más suave y enfocado en el borde */
+        --bs-table-bg: #f8d7da; /* Color de fondo ligero */
+        border-left: 5px solid #dc3545 !important; /* Borde rojo visible a la izquierda */
+    }
+    .table-hover .table-danger:hover {
+        --bs-table-bg: #f5c6cb; /* Asegura un color de fondo ligeramente diferente al pasar el ratón */
+    }
+    
+    /* Para destacar también el dato de la cantidad */
+    .table-danger .text-danger {
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     
     <div class="d-flex justify-content-between align-items-center pt-3 pb-3 mb-4 border-bottom">
         <h1 class="h2 text-primary"><i class="bi bi-box-seam me-2"></i> Inventario General</h1>
         
-        <div class="btn-toolbar" role="toolbar" aria-label="Toolbar con acciones de inventario">
+        <div class="btn-toolbar" role="toolbar">
             <div class="btn-group me-2" role="group">
-                <!-- INICIO CAMBIO: Pasar la URL actual a 'next' para que se conserve al crear un nuevo producto -->
-                {% set current_url_for_new = url_for('inventario_completo', page=pagination.page, per_page=per_page, search=search_term, estado_fisico=estado_fisico_filter, unidad_medida=unidad_medida_filter, estado_envase=estado_envase_filter, ubicacion_actual=ubicacion_actual_filter) %}
-                <a href="{{ url_for('gestionar_producto', next=current_url_for_new) }}" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i> Añadir Nuevo Producto</a>
-                <!-- FIN CAMBIO -->
+                <a href="{{ url_for('gestionar_producto', next=request.url) }}" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i> Añadir Nuevo Producto</a>
             </div>
             {% if current_user.es_admin %}
             <div class="btn-group me-2" role="group">
@@ -21,51 +37,48 @@
                 <a href="{{ url_for('exportar_inventario_csv', **request.args) }}" class="btn btn-info" title="Exportar el inventario filtrado a CSV"><i class="bi bi-file-earmark-excel me-1"></i> Exportar</a>
             </div>
             <div class="btn-group" role="group">
-                <button id="borrarSeleccionadosBtn" class="btn btn-danger" disabled><i class="bi bi-trash-fill me-1"></i> Borrar Seleccionados</button>
-                <button id="borrarTodoBtn" type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmMassDeleteModalAll"><i class="bi bi-trash-fill me-1"></i> Borrar TODO</button>
+                <button type="button" id="borrarSeleccionadosBtn" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmMassDeleteModal" data-mode="selected" disabled>
+                    <i class="bi bi-trash-fill me-1"></i> Borrar (<span id="countSelected">0</span>)
+                </button>
+                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmMassDeleteModal" data-mode="all">
+                    <i class="bi bi-exclamation-triangle-fill"></i> Borrar TODO
+                </button>
             </div>
             {% endif %}
         </div>
     </div>
 
-    <!-- Barra de Filtros y Búsqueda -->
     <form method="GET" action="{{ url_for('inventario_completo') }}" class="mb-4 bg-light p-3 rounded shadow-sm">
         <div class="row g-3 align-items-end">
             <div class="col-md-3">
                 <label for="search" class="form-label">Buscar por Nombre:</label>
                 <input type="text" class="form-control" id="search" name="search" value="{{ search_term }}" placeholder="Buscar producto...">
             </div>
-            
             <div class="col-md-2">
                 <label for="estado_fisico" class="form-label">Estado Físico:</label>
                 <select name="estado_fisico" id="estado_fisico" class="form-select">
                     <option value="todos">Todos</option>
                     {% for estado in estados_fisicos_unicos %}
-                        <option value="{{ estado }}" {% if estado_fisico_filter == estado %}selected{% endif %}>{{ estado|capitalize }}</option>
+                        {% if estado|lower != 'gas' %}
+                            <option value="{{ estado }}" {% if estado_fisico_filter == estado %}selected{% endif %}>{{ estado|capitalize }}</option>
+                        {% endif %}
                     {% endfor %}
                 </select>
             </div>
-            
             <div class="col-md-2">
                 <label for="estado_envase" class="form-label">Estado Envase:</label>
                 <select name="estado_envase" id="estado_envase" class="form-select">
                     <option value="todos">Todos</option>
-                    {% for estado in estados_envase_unicos %}
-                        <option value="{{ estado }}" {% if estado_envase_filter == estado %}selected{% endif %}>{{ estado|capitalize }}</option>
-                    {% endfor %}
+                    {% for estado in estados_envase_unicos %}<option value="{{ estado }}" {% if estado_envase_filter == estado %}selected{% endif %}>{{ estado|capitalize }}</option>{% endfor %}
                 </select>
             </div>
-
             <div class="col-md-2">
                 <label for="ubicacion_actual" class="form-label">Ubicación Actual:</label>
                 <select name="ubicacion_actual" id="ubicacion_actual" class="form-select">
                     <option value="todas">Todas</option>
-                    {% for ubicacion in ubicaciones_actuales_posibles %}
-                        <option value="{{ ubicacion }}" {% if ubicacion_actual_filter == ubicacion %}selected{% endif %}>{{ ubicacion|upper }}</option>
-                    {% endfor %}
+                    {% for ubicacion in ubicaciones_actuales_posibles %}<option value="{{ ubicacion }}" {% if ubicacion_actual_filter == ubicacion %}selected{% endif %}>{{ ubicacion|upper }}</option>{% endfor %}
                 </select>
             </div>
-            
             <div class="col-md-1">
                 <label for="per_page" class="form-label">Mostrar:</label>
                 <select name="per_page" id="per_page" class="form-select">
@@ -74,7 +87,6 @@
                     <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
                 </select>
             </div>
-
             <div class="col-md-2">
                 <button type="submit" class="btn btn-secondary w-100"><i class="bi bi-filter me-1"></i> Aplicar Filtros</button>
             </div>
@@ -82,93 +94,64 @@
     </form>
 
     <div class="card shadow mb-4">
-        <div class="card-header bg-white py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Resultados ({{ pagination.total }} Productos)</h6>
-        </div>
         <div class="card-body p-0">
-            <form id="massDeleteForm" method="POST" action="{{ url_for('admin_borrar_productos_seleccion') }}">
+            <form id="massDeleteForm" method="POST"
+                  data-url-seleccion="{{ url_for('admin_borrar_productos_seleccion') }}"
+                  data-url-todo="{{ url_for('admin_borrar_productos_todo') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="next" value="{{ request.url }}">
                 <div class="table-responsive">
                     <table class="table table-bordered table-striped table-hover m-0">
-                        <thead>
-                            <tr class="bg-light text-dark">
+                        <thead class="table-light">
+                            <tr>
                                 {% if current_user.es_admin %}
-                                <th class="text-center" style="width: 1%;">
-                                    <input type="checkbox" id="selectAllProducts">
-                                </th>
+                                <th class="text-center align-middle" style="width: 1%;"><input type="checkbox" id="selectAllProducts"></th>
                                 {% endif %}
-                                <th style="width: 1%;">#</th>
+                                <th class="text-center align-middle" style="width: 1%;">#</th>
                                 <th>Nombre del Producto</th>
-                                <th style="width: 10%;">CAS / F. M.</th>
+                                <th style="width: 10%;">E. Envase</th>
                                 <th style="width: 5%;">E. Físico</th>
-                                <th style="width: 5%;">E. Envase</th>
                                 <th class="text-center" style="width: 10%;">Cantidad</th>
-                                <th class="text-center text-danger" style="width: 10%;">Stock Mínimo</th>
+                                <th class="text-center" style="width: 10%;">Stock Mínimo</th>
                                 <th style="width: 10%;">Ubicación</th>
-                                <th style="width: 10%;">Acciones</th>
+                                <th class="text-center" style="width: 10%;">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for producto in productos %}
-                            {% set is_low_stock = producto.cantidad <= producto.stock_minimo and producto.stock_minimo > 0 %}
-                            <tr class="{% if is_low_stock %}table-warning{% endif %}">
+                            {% set alerta_stock = 'table-danger' if producto.cantidad <= producto.stock_minimo and producto.stock_minimo > 0 else '' %}
+                            <tr class="{{ alerta_stock }}">
                                 {% if current_user.es_admin %}
-                                <td class="text-center">
-                                    <input type="checkbox" name="producto_ids" value="{{ producto.id }}" class="product-checkbox">
-                                </td>
+                                <td class="text-center"><input type="checkbox" name="producto_ids" value="{{ producto.id }}" class="product-checkbox"></td>
                                 {% endif %}
-                                <!-- Muestra el número de fila calculado en app.py -->
-                                <td class="fw-bold text-center">{{ producto.row_number }}</td>
+                                <td class="fw-bold text-center">{{ loop.index + pagination.per_page * (pagination.page - 1) }}</td>
                                 <td>
                                     <div class="fw-bold">{{ producto.nombre }}</div>
                                     <small class="text-muted">{{ producto.nombre_cana }}</small>
                                 </td>
+                                <td><span class="badge {% if producto.estado|lower == 'abierto' %}bg-secondary{% else %}bg-success{% endif %}">{{ producto.estado|capitalize or 'N/A' }}</span></td>
+                                <td>{{ producto.estado_fisico|capitalize or 'N/A' }}</td>
+                                <td class="text-center fw-bold">{{ "{:,.2f}".format(producto.cantidad) }} {{ producto.unidad_medida|abreviar_unidad }}</td>
+                                <td class="text-center {% if alerta_stock %}text-danger{% endif %}">{{ "{:,.2f}".format(producto.stock_minimo) }}</td>
                                 <td>
-                                    <small class="text-break">{{ producto.cast_sigmg or 'N/A' }}</small>
-                                    <div class="text-muted"><small>{{ producto.formula_molecular or 'N/A' }}</small></div>
-                                </td>
-                                <td class="text-capitalize">{{ producto.estado_fisico or 'N/A' }}</td>
-                                <td class="text-capitalize">
-                                    {% if producto.estado == 'abierto' %}
-                                        <span class="badge bg-danger">Abierto</span>
-                                    {% elif producto.estado == 'cerrado' %}
-                                        <span class="badge bg-success">Cerrado</span>
-                                    {% else %}
-                                        N/A
-                                    {% endif %}
-                                </td>
-                                <td class="text-center fw-bold {% if is_low_stock %}text-danger{% endif %}">
-                                    {{ "{:,.2f}".format(producto.cantidad) }} {{ producto.unidad_medida|abreviar_unidad }}
-                                </td>
-                                <td class="text-center text-danger">
-                                    {{ "{:,.2f}".format(producto.stock_minimo) }}
-                                </td>
-                                <td>
-                                    <div class="text-uppercase">{{ producto.ubicacion_actual }}</div>
-                                    {% if producto.ubicacion_actual == 'otro' and producto.otra_ubicacion_actual %}
-                                        <small class="text-muted">{{ producto.otra_ubicacion_actual }}</small>
-                                    {% else %}
-                                        <small class="text-muted">{{ producto.ubicacion }} / {{ producto.estante }}</small>
-                                    {% endif %}
+                                    <span class="{% if alerta_stock %}fw-bold text-dark{% endif %}">
+                                        {% if producto.ubicacion_actual and producto.ubicacion_actual.lower() == 'otro' %}
+                                            {{ producto.otra_ubicacion_actual or 'Otro (Sin Especificar)' }}
+                                        {% else %}
+                                            {{ producto.ubicacion_actual | upper }}
+                                        {% endif %}
+                                    </span>
                                 </td>
                                 <td class="text-center">
-                                    <!-- Pasar la URL actual completa como parámetro 'next' -->
-                                    {% set current_url = url_for('inventario_completo', page=pagination.page, per_page=per_page, search=search_term, estado_fisico=estado_fisico_filter, unidad_medida=unidad_medida_filter, estado_envase=estado_envase_filter, ubicacion_actual=ubicacion_actual_filter) %}
-                                    <a href="{{ url_for('gestionar_producto', id=producto.id, next=current_url) }}" class="btn btn-sm btn-outline-secondary me-1" title="Editar Producto">
-                                        <i class="bi bi-pencil"></i>
-                                    </a>
-                                    {% if current_user.es_admin %}
-                                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteProductModal" 
-                                            data-product-id="{{ producto.id }}" data-product-name="{{ producto.nombre }}" title="Eliminar Producto">
+                                    <a href="{{ url_for('gestionar_producto', id=producto.id, next=request.url) }}" class="btn btn-sm btn-outline-secondary" title="Editar"><i class="bi bi-pencil"></i></a>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal" 
+                                            data-product-id="{{ producto.id }}" data-product-name="{{ producto.nombre }}" title="Eliminar">
                                         <i class="bi bi-trash"></i>
                                     </button>
-                                    {% endif %}
                                 </td>
                             </tr>
                             {% else %}
-                            <tr>
-                                <td colspan="10" class="text-center text-muted py-4">No se encontraron productos con los filtros aplicados.</td>
-                            </tr>
+                            <tr><td colspan="9" class="text-center text-muted py-4">No se encontraron productos.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -177,34 +160,29 @@
         </div>
     </div>
 
-    <!-- Paginación -->
     {% if pagination.pages > 1 %}
-    <nav aria-label="Paginación">
+    <nav>
         <ul class="pagination justify-content-center">
+            
+            {% set args = request.args.copy() %}
+            {% do args.pop('page', None) %}
+            
             <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('inventario_completo', page=pagination.prev_num, per_page=per_page, search=search_term, estado_fisico=estado_fisico_filter, unidad_medida=unidad_medida_filter, estado_envase=estado_envase_filter, ubicacion_actual=ubicacion_actual_filter) }}" aria-label="Anterior">
-                    <span aria-hidden="true">&laquo;</span>
-                </a>
+                <a class="page-link" href="{{ url_for('inventario_completo', page=pagination.prev_num, **args) }}">&laquo;</a>
             </li>
+            
             {% for page_num in pagination.iter_pages() %}
                 {% if page_num %}
-                    {% if page_num != pagination.page %}
-                        <li class="page-item">
-                            <a class="page-link" href="{{ url_for('inventario_completo', page=page_num, per_page=per_page, search=search_term, estado_fisico=estado_fisico_filter, unidad_medida=unidad_medida_filter, estado_envase=estado_envase_filter, ubicacion_actual=ubicacion_actual_filter) }}">{{ page_num }}</a>
-                        </li>
-                    {% else %}
-                        <li class="page-item active" aria-current="page">
-                            <span class="page-link">{{ page_num }}</span>
-                        </li>
-                    {% endif %}
+                <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('inventario_completo', page=page_num, **args) }}">{{ page_num }}</a>
+                </li>
                 {% else %}
-                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                <li class="page-item disabled"><span class="page-link">...</span></li>
                 {% endif %}
             {% endfor %}
+            
             <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('inventario_completo', page=pagination.next_num, per_page=per_page, search=search_term, estado_fisico=estado_fisico_filter, unidad_medida=unidad_medida_filter, estado_envase=estado_envase_filter, ubicacion_actual=ubicacion_actual_filter) }}" aria-label="Siguiente">
-                    <span aria-hidden="true">&raquo;</span>
-                </a>
+                <a class="page-link" href="{{ url_for('inventario_completo', page=pagination.next_num, **args) }}">&raquo;</a>
             </li>
         </ul>
     </nav>
@@ -212,20 +190,14 @@
 
 </div>
 
-<!-- Modal de Confirmación de Eliminación Única -->
-<div class="modal fade" id="deleteProductModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="deleteModalLabel">Confirmar Eliminación</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                ¿Estás seguro de que deseas eliminar el producto <strong id="productName"></strong>? Esta acción no se puede deshacer.
-            </div>
+            <div class="modal-header bg-danger text-white"><h5 class="modal-title">Confirmar Eliminación</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">¿Estás seguro de que deseas eliminar el producto <strong id="productName"></strong>?</div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form id="deleteForm" method="POST" style="display: inline;">
+                <form id="deleteForm" method="POST" class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger">Eliminar</button>
                 </form>
@@ -234,129 +206,22 @@
     </div>
 </div>
 
-<!-- Modal de Confirmación de Eliminación Masiva (Seleccionados) -->
-<div class="modal fade" id="confirmMassDeleteModal" tabindex="-1" aria-labelledby="massModalLabel" aria-hidden="true">
+<div class="modal fade" id="confirmMassDeleteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="massModalLabel">Confirmar Eliminación Masiva</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
+            <div class="modal-header bg-danger text-white"><h5 class="modal-title">Confirmar Acción Peligrosa</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
                 <p id="massModalText"></p>
-                <div class="alert alert-danger">¡ADVERTENCIA! Si el producto está asociado a una orden, la eliminación fallará.</div>
+                <div class="alert alert-warning mt-3">Esta acción no se puede deshacer.</div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" id="confirmMassDeleteBtn" class="btn btn-danger">Confirmar Borrado</button>
+                <button type="button" id="confirmMassDeleteBtn" class="btn btn-danger">Confirmar y Continuar</button>
             </div>
         </div>
     </div>
 </div>
-
-<!-- Modal de Confirmación de Eliminación TOTAL -->
-<div class="modal fade" id="confirmMassDeleteModalAll" tabindex="-1" aria-labelledby="massModalLabelAll" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title" id="massModalLabelAll">ADVERTENCIA: Eliminar TODO el Inventario</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="fw-bold">ESTA ACCIÓN ELIMINARÁ PERMANENTEMENTE TODOS LOS PRODUCTOS EN EL INVENTARIO. ¿ESTÁS SEGURO?</p>
-                <div class="alert alert-warning">Esta acción es irreversible y podría causar errores si existen órdenes pendientes asociadas.</div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form id="massDeleteAllForm" method="POST" action="{{ url_for('admin_borrar_productos_todo') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-danger">ELIMINAR TODO EL INVENTARIO</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block scripts %}
-<!-- CORRECCIÓN CLAVE: Asegura la carga del JS de Bootstrap -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // --- Lógica para la eliminación masiva (Borrar Seleccionados) ---
-        const massDeleteForm = document.getElementById('massDeleteForm');
-        const borrarSeleccionadosBtn = document.getElementById('borrarSeleccionadosBtn');
-        const checkboxes = document.querySelectorAll('.product-checkbox');
-        const selectAllCheckbox = document.getElementById('selectAllProducts');
-        const confirmMassDeleteBtn = document.getElementById('confirmMassDeleteBtn');
-
-        let massModal;
-        try {
-            massModal = new bootstrap.Modal(document.getElementById('confirmMassDeleteModal'));
-        } catch (e) {
-            // Ignorar el error si Bootstrap no cargó, el código JS hará un fallback.
-        }
-
-        function updateMassDeleteButton() {
-            const checkedCount = document.querySelectorAll('.product-checkbox:checked').length;
-            borrarSeleccionadosBtn.disabled = checkedCount === 0;
-            borrarSeleccionadosBtn.textContent = `Borrar Seleccionados (${checkedCount})`;
-        }
-
-        checkboxes.forEach(cb => cb.addEventListener('change', updateMassDeleteButton));
-        
-        if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', function () {
-                checkboxes.forEach(cb => cb.checked = this.checked);
-                updateMassDeleteButton();
-            });
-        }
-
-        // Manejador del botón Borrar Seleccionados
-        borrarSeleccionadosBtn.addEventListener('click', function (e) {
-            e.preventDefault();
-            const checkedCount = document.querySelectorAll('.product-checkbox:checked').length;
-            if (checkedCount > 0) {
-                document.getElementById('massModalText').innerHTML = `Estás a punto de eliminar **${checkedCount} productos** seleccionados. ¿Deseas continuar?`;
-                if (massModal) {
-                    massModal.show();
-                } else {
-                    // Fallback si Bootstrap JS no está cargado
-                    if (confirm(`Estás a punto de eliminar ${checkedCount} productos. ¿Deseas continuar?`)) {
-                        massDeleteForm.submit();
-                    }
-                }
-            }
-        });
-
-        // Envío del formulario al confirmar en el modal (CORRECCIÓN CLAVE: asegura que el formulario se envíe)
-        if (confirmMassDeleteBtn) {
-            confirmMassDeleteBtn.addEventListener('click', function () {
-                if (massModal) massModal.hide(); 
-                massDeleteForm.submit();
-            });
-        }
-
-        updateMassDeleteButton();
-
-        // --- Lógica para la eliminación simple (Modal) ---
-        var deleteProductModal = document.getElementById('deleteProductModal');
-        if (deleteProductModal) {
-            deleteProductModal.addEventListener('show.bs.modal', function (event) {
-                var button = event.relatedTarget;
-                var productId = button.getAttribute('data-product-id');
-                var productName = button.getAttribute('data-product-name');
-                
-                var productNameElement = deleteProductModal.querySelector('#productName');
-                var deleteForm = deleteProductModal.querySelector('#deleteForm');
-                
-                productNameElement.textContent = productName;
-                // Asume que la URL es admin_borrar_producto/<int:id>
-                deleteForm.action = "{{ url_for('admin_borrar_producto', id='0') }}".replace('0', productId);
-            });
-        }
-    });
-</script>
+<script src="{{ url_for('static', filename='js/inventario.js') }}"></script>
 {% endblock %}

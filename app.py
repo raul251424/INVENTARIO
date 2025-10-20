@@ -1,5 +1,3 @@
-# app.py (CÓDIGO COMPLETO, CORREGIDO Y FINAL)
-
 from flask import Flask, render_template, request, redirect, url_for, flash, abort, jsonify, session, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -17,6 +15,8 @@ import csv
 from io import StringIO
 from typing import List, Dict, Any
 from flask_migrate import Migrate
+import webbrowser 
+from threading import Timer 
 
 # --- INICIALIZACIÓN Y CONFIGURACIÓN ---
 load_dotenv()
@@ -71,10 +71,18 @@ def abreviar_unidad_filter(unidad):
         'gramos': 'g', 'kilogramos': 'kg', 'miligramos': 'mg',
         'mililitros': 'ml', 'litros': 'L', 'microlitros': 'µl',
         'moles': 'mol', 'milimoles': 'mmol', 'unidades': 'u',
-        'unidad': 'u', 'paquetes': 'paquetes', 'g': 'g', 'kg': 'kg', 
-        'mg': 'mg', 'ml': 'ml', 'l': 'L', 'µl': 'µl', 'mol': 'mol', 
-        'mmol': 'mmol', 'u': 'u'
+        'unidad': 'u', 
+        'g': 'g', 'kg': 'kg', 'mg': 'mg', 'ml': 'ml', 'l': 'L', 'µl': 'µl', 
+        'mol': 'mol', 'mmol': 'mmol', 'u': 'u',
+        
+        # --- NUEVAS UNIDADES ---
+        'centimetros': 'cm', 
+        'cm': 'cm', 
+        'paquetes': 'PKG',
+        'pkg': 'PKG'
     }
+    # Si la unidad no está en el mapa, la devuelve tal cual.
+    # Si está en el mapa, devuelve la abreviatura.
     return mapa.get(unidad, unidad)
 
 @login_manager.user_loader
@@ -100,7 +108,8 @@ class User(db.Model, UserMixin):
 class Producto(db.Model):
     __tablename__ = 'producto'
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(500), nullable=False, unique=True, index=True) 
+    # CORRECCIÓN: Quitamos unique=True para permitir productos con el mismo nombre
+    nombre = db.Column(db.String(500), nullable=False, index=True) 
     ubicacion = db.Column(db.String(255), index=True)
     estante = db.Column(db.String(100))
     nombre_cana = db.Column(db.String(255))
@@ -178,31 +187,24 @@ def dashboard_router():
 @login_required
 def admin_dashboard():
     try:
-        # --- CORRECCIÓN: Limpia los mensajes flash de stock bajo al cargar el dashboard ---
-        # Esto evita que la alerta persista si el usuario la cierra y navega.
-        if '_flashes' in session:
-            session['_flashes'] = [f for f in session['_flashes'] if 'Stock bajo' not in f[1]]
-            if not session['_flashes']:
-                session.pop('_flashes', None)
-        # ---------------------------------------------------------------------------------
-
         total_productos = db.session.query(func.count(Producto.id)).scalar()
         ordenes_abiertas = db.session.query(func.count(Orden.id)).filter(Orden.estado == 'ABIERTA').scalar()
         productos_recientes = Producto.query.order_by(Producto.id.desc()).limit(5).all()
         
+        # Aunque la alerta visual se quitó, mantenemos esta consulta por si se usa en otro lado
         productos_stock_bajo = Producto.query.filter(
             Producto.cantidad.isnot(None),
             Producto.stock_minimo.isnot(None),
             Producto.stock_minimo > 0,
             Producto.cantidad <= Producto.stock_minimo 
         ).order_by(Producto.nombre).all()
-
+        
         return render_template(
             'admin_dashboard.html', 
             total_productos=total_productos, 
             ordenes_abiertas=ordenes_abiertas, 
             productos_recientes=productos_recientes,
-            productos_stock_bajo=productos_stock_bajo
+            productos_stock_bajo=productos_stock_bajo # La plantilla decidirá si mostrarlo o no
         )
     except Exception as e:
         app.logger.error(f"Error al cargar el dashboard: {e}")
@@ -221,7 +223,6 @@ def inventario_completo():
     if per_page not in [10, 25, 50]: per_page = 10
     if page < 1: page = 1
     
-    # Captura de todos los parámetros de filtrado
     search_term = request.args.get('search', '', type=str)
     estado_fisico_filter = request.args.get('estado_fisico', 'todos', type=str)
     unidad_medida_filter = request.args.get('unidad_medida', 'todas', type=str)
@@ -241,15 +242,19 @@ def inventario_completo():
     if ubicacion_actual_filter != 'todas':
         query = query.filter(func.upper(Producto.ubicacion_actual) == ubicacion_actual_filter.upper())
 
-    # Lógica para el filtro de estado físico (sin 'gas', solo DB + base)
+    # --- CORRECCIÓN DEL FILTRO DE ESTADO FÍSICO ---
     estados_fisicos_unicos_db_raw = db.session.query(Producto.estado_fisico).distinct().filter(Producto.estado_fisico != None).all()
     estados_fisicos_db = {e[0].lower() for e in estados_fisicos_unicos_db_raw}
-    # CAMBIO: Lista base sin 'gas'
-    estados_fisicos_base = {'líquido', 'sólido'}
+    
+    # Se define la lista base solo con los términos preferidos.
+    estados_fisicos_base = {'líquido', 'sólido', 'gaseoso'}
+    
+    # Si 'gas' existe en la base de datos, lo eliminamos para evitar duplicados en la lista final.
+    estados_fisicos_db.discard('gas') 
     
     estados_fisicos_unicos = sorted(list(estados_fisicos_base.union(estados_fisicos_db)))
-    # -------------------------------------------------------------------------
-
+    # --- FIN CORRECCIÓN ---
+    
     unidades_medida_unicas_raw = db.session.query(Producto.unidad_medida).distinct().filter(Producto.unidad_medida != None).all()
     unidades_medida_unicas = sorted([u[0] for u in unidades_medida_unicas_raw])
     
@@ -262,14 +267,10 @@ def inventario_completo():
          return redirect(url_for('inventario_completo', page=pagination.pages, **request.args))
     
     productos_procesados = []
-    # --- NUEVA CARACTERÍSTICA: Numeración de Filas ---
     start_index = (pagination.page - 1) * pagination.per_page
     
-    for index, producto in enumerate(pagination.items):
-        # Asignar el número de fila al objeto producto
-        producto.row_number = start_index + index + 1
-        # --- FIN NUEVA CARACTERÍSTICA ---
-        
+    for index, producto in enumerate(pagination.items, start=start_index + 1):
+        producto.row_number = index
         if producto.cantidad is None:
             producto.cantidad = 0.0
         if producto.stock_minimo is None:
@@ -414,17 +415,20 @@ def crear_orden():
 def gestionar_producto(id=None):
     producto = db.session.get(Producto, id) if id else None
     
-    # Capturar el parámetro 'next' de la URL para redirigir después de guardar
     next_url = request.args.get('next', url_for('inventario_completo'))
-
+    
     if request.method == 'POST':
         try:
+            next_url_post = request.form.get('next', url_for('inventario_completo'))
+            
             is_new = producto is None
             if is_new:
                 producto = Producto()
                 db.session.add(producto)
             
+            # El nombre sigue siendo requerido en el HTML
             producto.nombre = request.form['nombre'].strip()
+            
             producto.ubicacion = request.form.get('ubicacion', '').strip()
             producto.estante = request.form.get('estante', '').strip()
             producto.nombre_cana = request.form.get('nombre_cana', '').strip()
@@ -433,13 +437,22 @@ def gestionar_producto(id=None):
             producto.cast_sigmg = request.form.get('cast_sigmg', '').strip()
             producto.estado_fisico = request.form.get('estado_fisico', '').strip().lower() 
             
+            # --- CORRECCIÓN: Hacemos que cantidad sea opcional y por defecto 0.0 ---
             cantidad_str = request.form.get('cantidad', '0').replace(',', '.')
-            producto.cantidad = float(cantidad_str)
+            if not cantidad_str.strip():
+                producto.cantidad = 0.0
+            else:
+                producto.cantidad = float(cantidad_str)
+            # -----------------------------------------------------------------------
             
             stock_minimo_str = request.form.get('stock_minimo', '0').replace(',', '.')
             producto.stock_minimo = float(stock_minimo_str)
 
-            producto.unidad_medida = request.form['unidad_medida'].strip().lower()
+            # --- CORRECCIÓN: La unidad de medida puede ser una cadena vacía ('') ---
+            # Ya no es requerido en el HTML
+            producto.unidad_medida = request.form.get('unidad_medida', '').strip().lower()
+            # -----------------------------------------------------------------------
+
             producto.estado = request.form.get('estado', '').strip().lower() 
             producto.ubicacion_actual = request.form['ubicacion_actual'].strip().lower()
             
@@ -447,21 +460,26 @@ def gestionar_producto(id=None):
                 producto.otra_ubicacion_actual = request.form.get('otra_ubicacion_actual', '').strip()
             else:
                 producto.otra_ubicacion_actual = None
-
+            
+            # Buscamos si ya existe un producto con ese nombre.
+            # Como la columna 'nombre' ya no es UNIQUE, el commit procederá.
+            # Si el producto ya existía (id != None), se actualiza. Si es nuevo, se inserta.
+            
             db.session.commit()
             flash('Producto guardado con éxito.', 'success')
-            
-            # --- Persistencia del Filtro: Redirige usando el valor 'next' ---
-            return redirect(request.form.get('next') or url_for('inventario_completo'))
-            
+            return redirect(next_url_post)
         except Exception as e:
             db.session.rollback()
-            flash('Ocurrió un error inesperado al guardar el producto.', 'danger')
-            app.logger.error(f"Error al guardar el producto: {e}")
+            # Manejamos errores numéricos y otros
+            if "could not convert string to float" in str(e) or "ValueError" in str(e):
+                flash('Error de formato: La cantidad o stock mínimo deben ser números válidos.', 'danger')
+            else:
+                flash('Ocurrió un error inesperado al guardar el producto.', 'danger')
+                app.logger.error(f"Error al guardar el producto: {e}")
+            return render_template('gestion_producto.html', producto=producto, next_url=next_url_post)
             
-    # Asegúrate de pasar 'next_url' a la plantilla en el método GET
     return render_template('gestion_producto.html', producto=producto, next_url=next_url)
-    
+
 @app.route('/panel/historial')
 @login_required
 def admin_historial():
@@ -558,14 +576,14 @@ def admin_borrar_producto(id):
 @app.route('/panel/producto/borrar-seleccion', methods=['POST'])
 @login_required
 def admin_borrar_productos_seleccion():
-    if not current_user.es_admin: abort(403)
     producto_ids = request.form.getlist('producto_ids')
+    next_url = request.form.get('next', url_for('inventario_completo'))
+    
     if not producto_ids:
         flash('No se seleccionó ningún producto para eliminar.', 'warning')
-        return redirect(url_for('inventario_completo'))
+        return redirect(next_url)
 
     try:
-        # Aquí se realiza el borrado de los productos seleccionados
         num_deleted = db.session.query(Producto).filter(Producto.id.in_(producto_ids)).delete(synchronize_session=False)
         db.session.commit()
         flash(f'Se eliminaron {num_deleted} productos seleccionados.', 'success')
@@ -577,13 +595,13 @@ def admin_borrar_productos_seleccion():
         flash('Ocurrió un error inesperado al eliminar productos.', 'danger')
         app.logger.error(f"Error al eliminar productos: {e}")
     
-    return redirect(url_for('inventario_completo'))
+    return redirect(next_url)
 
-# --- RUTA 'BORRAR TODO' RESTAURADA ---
 @app.route('/panel/producto/borrar-todo', methods=['POST'])
 @login_required
 def admin_borrar_productos_todo():
     if not current_user.es_admin: abort(403)
+    next_url = request.form.get('next', url_for('inventario_completo'))
     try:
         num_deleted = db.session.query(Producto).delete(synchronize_session=False)
         db.session.commit()
@@ -596,8 +614,7 @@ def admin_borrar_productos_todo():
         flash('Ocurrió un error inesperado al borrar todo el inventario.', 'danger')
         app.logger.error(f"Error al borrar todo el inventario: {e}")
     
-    return redirect(url_for('inventario_completo'))
-# -----------------------------------------------
+    return redirect(next_url)
 
 @app.route('/panel/orden/cerrar/<int:orden_id>', methods=['GET', 'POST'])
 @login_required
@@ -638,38 +655,28 @@ def cerrar_orden(orden_id):
             app.logger.error(f"Error al cerrar la orden: {e}")
     return render_template('admin_cerrar_orden.html', orden=orden)
 
-# app.py - Función Corregida: _update_product_from_row()
-
 def _update_product_from_row(producto: Producto, row: Dict[str, Any]):
     """
     Función auxiliar para actualizar un objeto Producto desde una fila de CSV.
-    Incluye manejo de errores robusto para la conversión a float.
     """
     errors = []
     
     for field, value in row.items():
         field = field.strip().lower()
-        
-        # Asegura que value no sea None y se convierta a string vacío si lo es
         str_value = str(value).strip() if value is not None else '' 
         
         if hasattr(producto, field) and str_value != '':
             if field in ['cantidad', 'stock_minimo']:
-                # Manejo de errores de conversión a float: ignora el error y usa 0.0
                 try:
-                    # Reemplaza comas por puntos antes de la conversión a float
                     numeric_value = str_value.replace(',', '.')
                     setattr(producto, field, float(numeric_value))
                 except ValueError:
-                    # Si falla la conversión (porque encontró texto), usa 0.0 y registra el error.
                     setattr(producto, field, 0.0)
                     errors.append(f"El campo '{field}' esperaba un número, pero se encontró '{str_value}'. Se estableció en 0.")
             else:
                 setattr(producto, field, str_value) 
     
     if errors:
-        # Lanza ValueError para que el bloque try/except en importar_inventario
-        # pueda capturar estos errores específicos de campo.
         raise ValueError("; ".join(errors))
 
 
@@ -700,7 +707,6 @@ def importar_inventario():
             
             csv_reader = csv.DictReader(stream, dialect=dialect)
             
-            # Normaliza los nombres de las columnas a minúsculas y sin espacios
             if csv_reader.fieldnames:
                 normalized_fieldnames = {}
                 for name in csv_reader.fieldnames:
@@ -709,39 +715,35 @@ def importar_inventario():
 
                 csv_reader.fieldnames = [normalized_fieldnames.get(name, name) for name in csv_reader.fieldnames if name is not None]
 
-            # Valida que las columnas obligatorias existan
-            required_columns = ['nombre', 'cantidad', 'stock_minimo', 'unidad_medida']
-            if not csv_reader.fieldnames or not all(col in csv_reader.fieldnames for col in required_columns):
-                current_fields = set(csv_reader.fieldnames if csv_reader.fieldnames else [])
-                missing = [col for col in required_columns if col not in current_fields]
+            required_columns = ['nombre', 'cantidad', 'unidad_medida']
+            current_fields = set(csv_reader.fieldnames if csv_reader.fieldnames else [])
+            missing = [col for col in required_columns if col not in current_fields]
+            if missing:
                 flash(f"El archivo CSV debe contener las siguientes columnas obligatorias: {', '.join(missing)}.", 'danger')
-                return render_template('importar_inventario.html', errors=errors)
-            
-            # Inicia una transacción
+                return render_template('importar_inventario.html', errors=[f"Columnas faltantes: {', '.join(missing)}"])
+
             with db.session.begin_nested():
                 for i, row_original in enumerate(csv_reader, start=2):
-                    row = {}
-                    for k, v in row_original.items():
-                        if k is not None:
-                            row[k] = str(v).strip() if v is not None else ''
+                    row = {k: str(v).strip() if v is not None else '' for k, v in row_original.items() if k is not None}
 
                     nombre_producto = row.get('nombre', '').strip()
                     if not nombre_producto:
                         errors.append(f"Fila {i}: El 'nombre' del producto no puede estar vacío.")
                         continue
                     
+                    # CORRECCIÓN EN IMPORTACIÓN: La búsqueda por nombre ya no es por nombre único.
+                    # Asumimos que si hay dos productos con el mismo nombre, el usuario desea actualizar el primero que se encuentre.
                     producto = db.session.query(Producto).filter(func.lower(Producto.nombre) == func.lower(nombre_producto)).first()
                     
                     try:
-                        if producto:  # Actualizar producto existente
+                        if producto:
                             _update_product_from_row(producto, row)
-                        else:  # Crear nuevo producto
+                        else:
                             nuevo_producto = Producto(nombre=nombre_producto)
                             _update_product_from_row(nuevo_producto, row)
                             db.session.add(nuevo_producto)
                     
                     except ValueError as e:
-                        # Este bloque captura el error de campo específico lanzado por _update_product_from_row
                         errors.append(f"Fila {i} (Producto: '{nombre_producto}'): {e}")
                     except Exception as e:
                         errors.append(f"Fila {i} (Producto: '{nombre_producto}'): Error inesperado - {e}")
@@ -755,7 +757,6 @@ def importar_inventario():
 
         except SQLAlchemyError:
              db.session.rollback() 
-             # Nota: Se mejoró el mensaje aquí, ya que los errores se listan abajo
              flash('Se encontraron errores en el archivo CSV. No se importó ningún dato. Revisa los detalles abajo.', 'danger')
         except (csv.Error, Exception) as e:
             db.session.rollback()
@@ -874,15 +875,39 @@ def set_security_headers(response):
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['X-Content-Type-Options'] = 'nosniff'
+    # CORRECCIÓN DE CSP: Se añaden 'unsafe-inline' y 'https://cdn.jsdelivr.net' a varias directivas
     csp = (
         "default-src 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net; "
+        "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; " 
         "style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; "
+        "connect-src 'self' https://cdn.jsdelivr.net; " 
         "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; "
         "img-src 'self' data:;"
     )
     response.headers['Content-Security-Policy'] = csp
     return response
 
+# --- INICIO DE APLICACIÓN CORREGIDO PARA .EXE ---
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Configuración del servidor
+    host_ip = '127.0.0.1'
+    port_num = 5000
+    
+    # Función para abrir el navegador después de un pequeño retraso (para el .exe)
+    def open_browser():
+        # Verificamos si estamos en debug mode o si estamos en el entorno de PyInstaller
+        import sys
+        if not app.debug or getattr(sys, 'frozen', False):
+            webbrowser.open_new(f'http://{host_ip}:{port_num}/')
+
+    # Iniciar el servidor en un hilo secundario y desactivar debug
+    # Usamos un temporizador para darle tiempo a Flask de iniciar
+    if not app.debug:
+        from threading import Timer
+        Timer(1, open_browser).start()
+
+    # Iniciar la aplicación Flask (debug=False para producción/PyInstaller)
+    app.run(host=host_ip, port=port_num, debug=False, threaded=True)
+# --- FIN DE INICIO DE APLICACIÓN CORREGIDO ---
+
+

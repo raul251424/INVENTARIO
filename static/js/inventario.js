@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', function () {
-    console.log("¡El archivo externo de JavaScript se ha cargado correctamente!");
 
     // --- LÓGICA DE BORRADO ÚNICO ---
     const confirmDeleteModal = document.getElementById('confirmDeleteModal');
@@ -12,32 +11,34 @@ document.addEventListener('DOMContentLoaded', function () {
             const modalProductName = confirmDeleteModal.querySelector('#productName');
             
             modalProductName.textContent = productName;
-            deleteForm.action = '/panel/producto/borrar/' + productId;
+            // Aseguramos que la URL base se construye correctamente
+            const baseUrl = window.location.origin;
+            deleteForm.action = `${baseUrl}/panel/producto/borrar/${productId}`;
         });
 
         deleteForm.addEventListener('submit', function (event) {
             event.preventDefault();
             const form = event.target;
-            const url = form.action;
-            const formData = new FormData(form);
-
-            fetch(url, {
+            
+            fetch(form.action, {
                 method: 'POST',
-                body: formData,
-                headers: { 'X-CSRFToken': formData.get('csrf_token') }
+                body: new FormData(form),
+                headers: {
+                    'X-CSRF-Token': form.querySelector('input[name="csrf_token"]').value
+                }
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     window.location.reload();
                 } else {
+                    alert('Error al eliminar el producto: ' + (data.message || 'Error desconocido.'));
                     const modal = bootstrap.Modal.getInstance(confirmDeleteModal);
-                    modal.hide();
-                    alert('Error al eliminar el producto: ' + data.message);
+                    if (modal) modal.hide();
                 }
             })
             .catch(error => {
-                console.error('Error:', error);
+                console.error('Error en la petición de borrado:', error);
                 alert('Ocurrió un error de red. Inténtalo de nuevo.');
             });
         });
@@ -47,57 +48,60 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectAllCheckbox = document.getElementById('selectAllProducts');
     const productCheckboxes = document.querySelectorAll('.product-checkbox');
     const borrarSeleccionadosBtn = document.getElementById('borrarSeleccionadosBtn');
-    const countSelected = document.getElementById('countSelected');
+    const countSelectedSpan = document.getElementById('countSelected');
 
     function updateSelectedCount() {
         const checkedCount = document.querySelectorAll('.product-checkbox:checked').length;
-        if (countSelected) countSelected.textContent = checkedCount;
-        if (borrarSeleccionadosBtn) borrarSeleccionadosBtn.disabled = checkedCount === 0;
+        if (countSelectedSpan) {
+            countSelectedSpan.textContent = checkedCount;
+        }
+        if (borrarSeleccionadosBtn) {
+            borrarSeleccionadosBtn.disabled = (checkedCount === 0);
+        }
+        // Sincronizar el checkbox "seleccionar todo"
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = (productCheckboxes.length > 0 && checkedCount === productCheckboxes.length);
+        }
     }
 
     if (selectAllCheckbox) {
         selectAllCheckbox.addEventListener('change', function () {
             productCheckboxes.forEach(checkbox => {
-                checkbox.checked = selectAllCheckbox.checked;
+                checkbox.checked = this.checked;
             });
             updateSelectedCount();
         });
     }
 
     productCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function () {
-            updateSelectedCount();
-            if (selectAllCheckbox && document.querySelectorAll('.product-checkbox:checked').length !== productCheckboxes.length) {
-                selectAllCheckbox.checked = false;
-            }
-        });
+        checkbox.addEventListener('change', updateSelectedCount);
     });
 
+    // Llamada inicial para establecer el estado correcto al cargar la página
     updateSelectedCount();
 
-    // --- LÓGICA DE BORRADO MASIVO CON MODAL ---
-    const confirmMassDeleteModal = document.getElementById('confirmMassDeleteModal');
+    // --- LÓGICA DE BORRADO MASIVO CON MODAL (CORREGIDA) ---
+    const massDeleteModalEl = document.getElementById('confirmMassDeleteModal');
     const massDeleteForm = document.getElementById('massDeleteForm');
 
-    if (confirmMassDeleteModal && massDeleteForm) {
+    if (massDeleteModalEl && massDeleteForm) {
         const massModalText = document.getElementById('massModalText');
         const confirmMassDeleteBtn = document.getElementById('confirmMassDeleteBtn');
-        
-        // Obtenemos las URLs desde los atributos data-* en el formulario
         const urlSeleccion = massDeleteForm.getAttribute('data-url-seleccion');
         const urlTodo = massDeleteForm.getAttribute('data-url-todo');
 
-        confirmMassDeleteModal.addEventListener('show.bs.modal', function (event) {
+        massDeleteModalEl.addEventListener('show.bs.modal', function (event) {
             const button = event.relatedTarget;
             const mode = button.getAttribute('data-mode');
             
+            // Guardar el modo en el botón de confirmación del modal
             confirmMassDeleteBtn.setAttribute('data-mode', mode);
             
             if (mode === 'selected') {
                 const count = document.querySelectorAll('.product-checkbox:checked').length;
-                massModalText.innerHTML = `¿Estás seguro de que deseas eliminar permanentemente **${count} productos seleccionados**?`;
+                massModalText.innerHTML = `¿Estás seguro de que deseas eliminar permanentemente <strong>${count} productos seleccionados</strong>?`;
             } else if (mode === 'all') {
-                massModalText.innerHTML = `**ESTA ACCIÓN ELIMINARÁ TODO EL INVENTARIO.** ¿Deseas continuar?`;
+                massModalText.innerHTML = `<strong>¡ADVERTENCIA!</strong> Esta acción eliminará todo el inventario de forma permanente. ¿Deseas continuar?`;
             }
         });
 
@@ -106,15 +110,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (mode === 'selected') {
                 massDeleteForm.action = urlSeleccion;
-                productCheckboxes.forEach(checkbox => {
-                    if (!checkbox.checked) {
-                        checkbox.disabled = true;
-                    }
-                });
             } else if (mode === 'all') {
                 massDeleteForm.action = urlTodo;
             }
 
+            // ¡IMPORTANTE! Simplemente enviamos el formulario.
+            // No deshabilitamos ningún checkbox. El navegador solo enviará los que están marcados.
             if (massDeleteForm.action) {
                 massDeleteForm.submit();
             }
