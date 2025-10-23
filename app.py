@@ -133,7 +133,8 @@ class Orden(db.Model):
     fecha_solicitud = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     fecha_cierre = db.Column(db.DateTime, nullable=True)
     estado = db.Column(db.String(20), default='ABIERTA', index=True)
-    observaciones = db.Column(db.Text, nullable=True)
+    # CORRECCIÓN DE SINTAXIS: Se asegura que db.Column esté correcto
+    observaciones = db.Column(db.Text, nullable=True) 
     detalles = db.relationship('DetalleOrden', backref='orden', lazy='joined', cascade="all, delete-orphan")
 
 class DetalleOrden(db.Model):
@@ -199,8 +200,7 @@ def admin_dashboard():
             Producto.cantidad <= Producto.stock_minimo 
         ).order_by(Producto.nombre).all()
         
-        return render_template(
-            'admin_dashboard.html', 
+        return render_template('admin_dashboard.html', 
             total_productos=total_productos, 
             ordenes_abiertas=ordenes_abiertas, 
             productos_recientes=productos_recientes,
@@ -404,7 +404,6 @@ def crear_orden():
             flash('Por favor, introduce valores válidos.', 'danger')
             app.logger.error(f"Error de valor/tipo al crear orden: {e}")
         except Exception as e:
-            db.session.rollback()
             flash('Ocurrió un error inesperado al crear la orden.', 'danger')
             app.logger.error(f"Error al crear la orden: {e}")
     return render_template('crear_orden.html', productos=productos)
@@ -467,7 +466,7 @@ def gestionar_producto(id=None):
             
             db.session.commit()
             flash('Producto guardado con éxito.', 'success')
-            return redirect(next_url_post)
+            return redirect(url_for('next_url_post'))
         except Exception as e:
             db.session.rollback()
             # Manejamos errores numéricos y otros
@@ -603,9 +602,9 @@ def admin_borrar_productos_todo():
     if not current_user.es_admin: abort(403)
     next_url = request.form.get('next', url_for('inventario_completo'))
     try:
-        num_deleted = db.session.query(Producto).delete(synchronize_session=False)
+        num_deleted = db.session.query(Producto).delete()
         db.session.commit()
-        flash(f'¡ADVERTENCIA! Se eliminaron {num_deleted} productos. El inventario está vacío.', 'danger')
+        flash(f'¡ADVERTENCIA! Se eliminaron {num_deleted} registros. El inventario está vacío.', 'danger')
     except IntegrityError:
         db.session.rollback()
         flash('Error: No se pueden eliminar todos los productos porque algunos están en uso en órdenes.', 'danger')
@@ -695,59 +694,85 @@ def importar_inventario():
 
         errors = []
         try:
+            # 1. Detección inicial del CSV (codificación y delimitador)
             content = file.stream.read().decode('utf-8-sig')
             stream = StringIO(content)
-
+            
             try:
+                # Intentamos detectar el dialecto para manejar delimitadores complejos
                 dialect = csv.Sniffer().sniff(stream.read(2048))
                 stream.seek(0)
             except csv.Error:
                 stream.seek(0)
-                dialect = 'excel'
+                dialect = 'excel' # Fallback a Excel default (generalmente coma)
             
             csv_reader = csv.DictReader(stream, dialect=dialect)
             
+            # --- CORRECCIÓN DE NORMALIZACIÓN DE ENCABEZADOS (A PRUEBA DE FALLOS) ---
             if csv_reader.fieldnames:
-                normalized_fieldnames = {}
+                
+                # Mapeo de encabezado_original -> encabezado_normalizado
+                header_mapping = {}
                 for name in csv_reader.fieldnames:
-                    if name is not None:
-                         normalized_fieldnames[name] = name.strip().lower()
-
-                csv_reader.fieldnames = [normalized_fieldnames.get(name, name) for name in csv_reader.fieldnames if name is not None]
-
-            required_columns = ['nombre', 'cantidad', 'unidad_medida']
+                    if name is not None and name.strip():
+                        # Normalización: minúsculas, elimina espacios, puntos, barras, paréntesis
+                        normalized_name = name.strip().lower().replace(' ', '').replace('.', '').replace('/', '').replace('(', '').replace(')', '')
+                        header_mapping[name] = normalized_name
+                
+                # Reemplazamos los fieldnames del lector con los nombres normalizados
+                csv_reader.fieldnames = list(header_mapping.values())
+                
+            # 3. Validación de columnas requeridas
+            required_columns = ['nombre', 'cantidad'] 
             current_fields = set(csv_reader.fieldnames if csv_reader.fieldnames else [])
+            
             missing = [col for col in required_columns if col not in current_fields]
             if missing:
-                flash(f"El archivo CSV debe contener las siguientes columnas obligatorias: {', '.join(missing)}.", 'danger')
-                return render_template('importar_inventario.html', errors=[f"Columnas faltantes: {', '.join(missing)}"])
+                errors.append(f"Columnas obligatorias faltantes: {', '.join(missing)}. Verifique que los encabezados sean correctos (nombre, cantidad).")
+                return render_template('importar_inventario.html', errors=errors)
+            # --- FIN CORRECCIÓN ---
 
             with db.session.begin_nested():
+                # Reajustar start=2 ya que la Fila 1 es el encabezado
                 for i, row_original in enumerate(csv_reader, start=2):
-                    row = {k: str(v).strip() if v is not None else '' for k, v in row_original.items() if k is not None}
+                    
+                    # 1. Normalización de la Fila de Datos
+                    normalized_row = {}
+                    
+                    # Iterar sobre la fila y usar el mapeo para asignar valores a las claves normalizadas
+                    for original_key_normalized, value in row_original.items():
+                        
+                        if original_key_normalized and original_key_normalized.strip():
+                            # Encontrar la clave normalizada correspondiente
+                            normalized_key = original_key_normalized.strip().lower().replace(' ', '').replace('.', '').replace('/', '').replace('(', '').replace(')', '')
+                            
+                            # Asignar el valor
+                            normalized_row[normalized_key] = str(value).strip() if value is not None else ''
 
-                    nombre_producto = row.get('nombre', '').strip()
+                    
+                    nombre_producto = normalized_row.get('nombre', '').strip()
                     if not nombre_producto:
                         errors.append(f"Fila {i}: El 'nombre' del producto no puede estar vacío.")
                         continue
                     
-                    # CORRECCIÓN EN IMPORTACIÓN: La búsqueda por nombre ya no es por nombre único.
-                    # Asumimos que si hay dos productos con el mismo nombre, el usuario desea actualizar el primero que se encuentre.
                     producto = db.session.query(Producto).filter(func.lower(Producto.nombre) == func.lower(nombre_producto)).first()
                     
                     try:
                         if producto:
-                            _update_product_from_row(producto, row)
+                            _update_product_from_row(producto, normalized_row)
                         else:
                             nuevo_producto = Producto(nombre=nombre_producto)
-                            _update_product_from_row(nuevo_producto, row)
+                            _update_product_from_row(nuevo_producto, normalized_row)
                             db.session.add(nuevo_producto)
                     
                     except ValueError as e:
-                        errors.append(f"Fila {i} (Producto: '{nombre_producto}'): {e}")
+                        # Error capturado por la función _update_product_from_row
+                        errors.append(f"Fila {i}: Error de dato en el producto '{nombre_producto}'. Detalle: {e}")
                     except Exception as e:
+                        # Otros errores inesperados
                         errors.append(f"Fila {i} (Producto: '{nombre_producto}'): Error inesperado - {e}")
                 
+                # Si se encontraron errores durante el bucle, forzamos el rollback
                 if errors:
                     raise SQLAlchemyError("Errores encontrados durante la importación, revirtiendo cambios.")
 
@@ -755,11 +780,16 @@ def importar_inventario():
             flash('Inventario importado y/o actualizado exitosamente. 🎉', 'success')
             return redirect(url_for('inventario_completo'))
 
+        # --- CAPTURA CLAVE para mostrar errores detallados ---
         except SQLAlchemyError:
              db.session.rollback() 
              flash('Se encontraron errores en el archivo CSV. No se importó ningún dato. Revisa los detalles abajo.', 'danger')
+             return render_template('importar_inventario.html', errors=errors)
+        # --- FIN CAPTURA CLAVE ---
+        
         except (csv.Error, Exception) as e:
             db.session.rollback()
+            # Este es para errores críticos de archivo, antes de leer datos.
             errors.append(f"Error crítico al leer o procesar el archivo: {e}")
             flash(f"Error crítico al procesar el archivo. Revisa el formato y el delimitador. Detalles: {e}", 'danger')
 
@@ -909,5 +939,3 @@ if __name__ == '__main__':
     # Iniciar la aplicación Flask (debug=False para producción/PyInstaller)
     app.run(host=host_ip, port=port_num, debug=False, threaded=True)
 # --- FIN DE INICIO DE APLICACIÓN CORREGIDO ---
-
-
